@@ -73,6 +73,7 @@ function formatWon(value) {
 
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [session, setSession] = useState(null);
   const [active, setActive] = useState("charge");
   const [dark, setDark] = useState(true);
   const [koreaTime, setKoreaTime] = useState(true);
@@ -102,15 +103,20 @@ export default function Home() {
   );
 
   if (!loggedIn) {
-    return <LoginScreen onLogin={() => setLoggedIn(true)} />;
+    return <LoginScreen onLogin={(result) => {
+      setSession(result);
+      setLoggedIn(true);
+    }} />;
   }
+
+  const partner = session?.partner ?? dashboard?.partner;
 
   return (
     <main className={dark ? "shell dark" : "shell light"}>
       <aside className="sidebar">
         <div className="brandMini">
           <ShieldCheck size={18} />
-          <span>{dashboard?.partner?.name ?? "에센씨2"}</span>
+          <span>{partner?.name ?? "파트너"}</span>
           <small>(연락처)</small>
         </div>
 
@@ -169,7 +175,7 @@ export default function Home() {
 
       <section className="workspace">
         {active === "charge" && (
-          <ChargePage amount={chargeAmount} partnerId={dashboard?.partner?.id} setAmount={setChargeAmount} />
+          <ChargePage amount={chargeAmount} partner={partner} setAmount={setChargeAmount} />
         )}
         {active === "withdraw" && (
           <WithdrawPage amount={withdrawAmount} setAmount={setWithdrawAmount} />
@@ -207,7 +213,7 @@ function LoginScreen({ onLogin }) {
         return;
       }
 
-      onLogin();
+      onLogin(result);
     } catch {
       setError("잠시 후 다시 시도해주세요.");
     } finally {
@@ -220,7 +226,6 @@ function LoginScreen({ onLogin }) {
       <section className="loginPanel">
         <p className="eyebrow">Partner Admin</p>
         <h1>WINPAY</h1>
-        <p className="loginHint">테스트 계정: admin / 0000</p>
         <form onSubmit={handleSubmit}>
           <label>
             <span>아이디</span>
@@ -285,14 +290,14 @@ function AmountButtons({ onPick, includeAll }) {
   );
 }
 
-function ChargePage({ amount, partnerId, setAmount }) {
+function ChargePage({ amount, partner, setAmount }) {
   return (
     <PageFrame title="충전">
       <section className="formTable">
         <div className="labelCell">아이디</div>
-        <div className="valueCell">{partnerId ?? "essenc2"}</div>
+        <div className="valueCell">{partner?.id ?? "-"}</div>
         <div className="labelCell">입금자명</div>
-        <div className="valueCell">에센씨2</div>
+        <div className="valueCell">{partner?.name ?? "-"}</div>
         <div className="labelCell">충전금액</div>
         <div className="valueCell moneyInput">
           <span>₩</span>
