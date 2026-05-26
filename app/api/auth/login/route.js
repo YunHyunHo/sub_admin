@@ -1,6 +1,6 @@
 const DEMO_LOGIN_ID = "admin";
 const DEMO_PASSWORD = "0000";
-const AUTH_API_URL = process.env.AUTH_API_URL;
+const AUTH_API_URL = process.env.AUTH_API_URL ?? "https://laylow.me/partner/auth/login";
 const AUTH_API_KEY = process.env.AUTH_API_KEY;
 
 export async function POST(request) {
