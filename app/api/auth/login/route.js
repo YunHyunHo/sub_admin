@@ -2,34 +2,8 @@ const DEMO_LOGIN_ID = "admin";
 const DEMO_PASSWORD = "0000";
 const AUTH_API_URL = process.env.AUTH_API_URL ?? "https://laylow.me/partner/auth/login";
 const AUTH_API_KEY = process.env.AUTH_API_KEY;
-const AUTH_DOMAIN = process.env.AUTH_DOMAIN;
 
-function getRequestDomain(request) {
-  return (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "")
-    .split(",")[0]
-    .trim()
-    .toLowerCase()
-    .replace(/:\d+$/, "");
-}
-
-function getDomainCandidates(request) {
-  if (AUTH_DOMAIN) {
-    return [AUTH_DOMAIN.toLowerCase()];
-  }
-
-  const domain = getRequestDomain(request);
-  const candidates = [domain];
-
-  if (domain.startsWith("www.")) {
-    candidates.push(domain.slice(4));
-  } else if (domain) {
-    candidates.push(`www.${domain}`);
-  }
-
-  return [...new Set(candidates.filter(Boolean))];
-}
-
-async function requestPartnerLogin({ loginId, password, domain }) {
+async function requestPartnerLogin({ loginId, password }) {
   const response = await fetch(AUTH_API_URL, {
     method: "POST",
     headers: {
@@ -38,8 +12,7 @@ async function requestPartnerLogin({ loginId, password, domain }) {
     },
     body: JSON.stringify({
       loginId,
-      password,
-      domain
+      password
     })
   });
   const result = await response.json().catch(() => null);
@@ -54,73 +27,54 @@ export async function POST(request) {
   const { loginId, password } = await request.json();
 
   if (AUTH_API_URL) {
-    const domains = getDomainCandidates(request);
-    let lastResponse = null;
-    let lastResult = null;
-    let matchedDomain = "";
+    const { response, result } = await requestPartnerLogin({ loginId, password });
 
-    for (const domain of domains) {
-      const { response, result } = await requestPartnerLogin({ loginId, password, domain });
-      lastResponse = response;
-      lastResult = result;
-      matchedDomain = domain;
+    console.info("[partner-auth] login attempt", {
+      loginId,
+      status: response.status,
+      ok: Boolean(result?.ok)
+    });
 
-      console.info("[partner-auth] login attempt", {
-        loginId,
-        domain,
-        status: response.status,
-        ok: Boolean(result?.ok)
-      });
-
-      if (response.ok && result?.ok) {
-        break;
-      }
-    }
-
-    if (!lastResponse?.ok || !lastResult?.ok) {
+    if (!response.ok || !result?.ok) {
       console.warn("[partner-auth] login failed", {
         loginId,
-        domains,
-        lastDomain: matchedDomain,
-        status: lastResponse?.status,
-        message: lastResult?.message ?? "No response message"
+        status: response.status,
+        message: result?.message ?? "No response message"
       });
 
       return Response.json(
         {
           ok: false,
-          message: lastResult?.message ?? "아이디 또는 비밀번호가 올바르지 않습니다.",
+          message: result?.message ?? "아이디 또는 비밀번호가 올바르지 않습니다.",
           debug: {
-            domains,
-            status: lastResponse?.status
+            status: response.status
           }
         },
-        { status: lastResponse?.status || 401 }
+        { status: response.status || 401 }
       );
     }
 
     console.info("[partner-auth] login success", {
       loginId,
-      matchedDomain,
-      partnerId: lastResult.partner?.id,
-      partnerDomain: lastResult.partner?.domain
+      partnerId: result.partner?.id,
+      partnerDomain: result.partner?.domain
     });
 
     return Response.json({
       ok: true,
-      token: lastResult.token,
+      token: result.token,
       user: {
-        loginId: lastResult.user?.loginId ?? loginId,
-        name: lastResult.user?.name ?? lastResult.partner?.name ?? loginId,
-        role: lastResult.user?.role ?? "partner_admin",
-        permissions: lastResult.user?.permissions ?? [],
-        menus: lastResult.user?.menus ?? []
+        loginId: result.user?.loginId ?? loginId,
+        name: result.user?.name ?? result.partner?.name ?? loginId,
+        role: result.user?.role ?? "partner_admin",
+        permissions: result.user?.permissions ?? [],
+        menus: result.user?.menus ?? []
       },
       partner: {
-        id: lastResult.partner?.id ?? lastResult.user?.partnerId ?? "",
-        name: lastResult.partner?.name ?? lastResult.user?.partnerName ?? "",
-        domainId: lastResult.partner?.domainId ?? "",
-        domain: lastResult.partner?.domain ?? matchedDomain
+        id: result.partner?.id ?? result.user?.partnerId ?? "",
+        name: result.partner?.name ?? result.user?.partnerName ?? "",
+        domainId: result.partner?.domainId ?? "",
+        domain: result.partner?.domain ?? ""
       }
     });
   }
