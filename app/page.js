@@ -107,8 +107,6 @@ export default function Home() {
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
       setSession(result);
-      setChargeUserId(result.partner?.id ?? "");
-      setChargeDepositor(result.partner?.name ?? "");
       setLoggedIn(true);
     }} />;
   }
