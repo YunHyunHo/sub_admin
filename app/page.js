@@ -78,6 +78,8 @@ export default function Home() {
   const [dark, setDark] = useState(true);
   const [koreaTime, setKoreaTime] = useState(true);
   const [chargeAmount, setChargeAmount] = useState("");
+  const [chargeUserId, setChargeUserId] = useState("");
+  const [chargeDepositor, setChargeDepositor] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [dashboard, setDashboard] = useState(null);
 
@@ -105,6 +107,8 @@ export default function Home() {
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
       setSession(result);
+      setChargeUserId(result.partner?.id ?? "");
+      setChargeDepositor(result.partner?.name ?? "");
       setLoggedIn(true);
     }} />;
   }
@@ -175,7 +179,14 @@ export default function Home() {
 
       <section className="workspace">
         {active === "charge" && (
-          <ChargePage amount={chargeAmount} partner={partner} setAmount={setChargeAmount} />
+          <ChargePage
+            amount={chargeAmount}
+            chargeUserId={chargeUserId}
+            depositor={chargeDepositor}
+            setAmount={setChargeAmount}
+            setChargeUserId={setChargeUserId}
+            setDepositor={setChargeDepositor}
+          />
         )}
         {active === "withdraw" && (
           <WithdrawPage amount={withdrawAmount} setAmount={setWithdrawAmount} />
@@ -295,14 +306,35 @@ function AmountButtons({ onPick, includeAll }) {
   );
 }
 
-function ChargePage({ amount, partner, setAmount }) {
+function ChargePage({
+  amount,
+  chargeUserId,
+  depositor,
+  setAmount,
+  setChargeUserId,
+  setDepositor
+}) {
   return (
     <PageFrame title="충전">
       <section className="formTable">
         <div className="labelCell">아이디</div>
-        <div className="valueCell">{partner?.id ?? "-"}</div>
+        <div className="valueCell">
+          <input
+            className="valueInput"
+            onChange={(event) => setChargeUserId(event.target.value)}
+            placeholder="아이디 입력"
+            value={chargeUserId}
+          />
+        </div>
         <div className="labelCell">입금자명</div>
-        <div className="valueCell">{partner?.name ?? "-"}</div>
+        <div className="valueCell">
+          <input
+            className="valueInput"
+            onChange={(event) => setDepositor(event.target.value)}
+            placeholder="입금자명 입력"
+            value={depositor}
+          />
+        </div>
         <div className="labelCell">충전금액</div>
         <div className="valueCell moneyInput">
           <span>₩</span>

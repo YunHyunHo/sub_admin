@@ -95,6 +95,7 @@ button {
 .loginPanel input,
 .searchBox input,
 .dateInput input,
+.valueInput,
 .moneyInput input {
   width: 100%;
   border: 1px solid var(--line);
@@ -338,7 +339,8 @@ button {
   font-weight: 900;
 }
 
-.moneyInput input {
+.moneyInput input,
+.valueInput {
   max-width: 420px;
   height: 42px;
   border-radius: 8px;
