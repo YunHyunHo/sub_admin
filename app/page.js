@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
-  Clock3,
   Contact,
   CreditCard,
   LogOut,
@@ -76,7 +75,7 @@ export default function Home() {
   const [session, setSession] = useState(null);
   const [active, setActive] = useState("charge");
   const [dark, setDark] = useState(true);
-  const [koreaTime, setKoreaTime] = useState(true);
+  const [koreaTime, setKoreaTime] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeUserId, setChargeUserId] = useState("");
   const [chargeDepositor, setChargeDepositor] = useState("");
@@ -88,6 +87,25 @@ export default function Home() {
       .then((response) => response.json())
       .then(setDashboard)
       .catch(() => setDashboard(null));
+  }, []);
+
+  useEffect(() => {
+    function updateKoreaTime() {
+      setKoreaTime(
+        new Intl.DateTimeFormat("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+          timeZone: "Asia/Seoul"
+        }).format(new Date())
+      );
+    }
+
+    updateKoreaTime();
+    const timer = window.setInterval(updateKoreaTime, 1000);
+
+    return () => window.clearInterval(timer);
   }, []);
 
   const totals = useMemo(
@@ -159,8 +177,8 @@ export default function Home() {
 
         <div className="sideFooter">
           <Toggle label="다크 / 라이트" checked={dark} onChange={setDark} icons={[Moon, Sun]} />
-          <Toggle label="현지시간 / 한국시간" checked={koreaTime} onChange={setKoreaTime} icons={[Clock3, Clock3]} />
-          <time>{koreaTime ? "21:59:10" : "12:59:10"}</time>
+          <span className="timeLabel">한국시간</span>
+          <time>{koreaTime}</time>
           <span>Version {dashboard?.partner?.version ?? "01.30"}</span>
           <div className="footerLinks">
             <button type="button">

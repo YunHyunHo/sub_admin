@@ -241,6 +241,11 @@ button {
   font-size: 13px;
 }
 
+.timeLabel {
+  color: var(--text);
+  font-weight: 900;
+}
+
 .toggleRow {
   display: grid;
   justify-items: center;
