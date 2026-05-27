@@ -28,6 +28,8 @@ const navItems = [
   { key: "settlement", label: "정산내역", icon: CalendarDays }
 ];
 
+const SESSION_STORAGE_KEY = "winpay_partner_session";
+
 const mockOrders = [
   {
     id: "3a040cca",
@@ -90,6 +92,22 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+
+    if (!savedSession) {
+      return;
+    }
+
+    try {
+      const parsedSession = JSON.parse(savedSession);
+      setSession(parsedSession);
+      setLoggedIn(true);
+    } catch {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
     function updateKoreaTime() {
       setKoreaTime(
         new Intl.DateTimeFormat("ko-KR", {
@@ -124,6 +142,7 @@ export default function Home() {
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(result));
       setSession(result);
       setLoggedIn(true);
     }} />;
@@ -185,7 +204,14 @@ export default function Home() {
               <Contact size={15} />
               Contact Us
             </button>
-            <button onClick={() => setLoggedIn(false)} type="button">
+            <button
+              onClick={() => {
+                window.localStorage.removeItem(SESSION_STORAGE_KEY);
+                setSession(null);
+                setLoggedIn(false);
+              }}
+              type="button"
+            >
               <LogOut size={15} />
               Logout
             </button>
