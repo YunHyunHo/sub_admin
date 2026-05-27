@@ -65,20 +65,46 @@ export async function POST(request) {
       lastResult = result;
       matchedDomain = domain;
 
+      console.info("[partner-auth] login attempt", {
+        loginId,
+        domain,
+        status: response.status,
+        ok: Boolean(result?.ok)
+      });
+
       if (response.ok && result?.ok) {
         break;
       }
     }
 
     if (!lastResponse?.ok || !lastResult?.ok) {
+      console.warn("[partner-auth] login failed", {
+        loginId,
+        domains,
+        lastDomain: matchedDomain,
+        status: lastResponse?.status,
+        message: lastResult?.message ?? "No response message"
+      });
+
       return Response.json(
         {
           ok: false,
-          message: lastResult?.message ?? "아이디 또는 비밀번호가 올바르지 않습니다."
+          message: lastResult?.message ?? "아이디 또는 비밀번호가 올바르지 않습니다.",
+          debug: {
+            domains,
+            status: lastResponse?.status
+          }
         },
         { status: lastResponse?.status || 401 }
       );
     }
+
+    console.info("[partner-auth] login success", {
+      loginId,
+      matchedDomain,
+      partnerId: lastResult.partner?.id,
+      partnerDomain: lastResult.partner?.domain
+    });
 
     return Response.json({
       ok: true,

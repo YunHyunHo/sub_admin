@@ -209,6 +209,11 @@ function LoginScreen({ onLogin }) {
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
+        console.warn("[partner-auth] login failed", {
+          status: response.status,
+          message: result.message,
+          debug: result.debug
+        });
         setError(result.message ?? "로그인 정보를 확인해주세요.");
         return;
       }
