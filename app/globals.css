@@ -386,6 +386,29 @@ button {
   justify-self: center;
 }
 
+.formNotice {
+  justify-self: center;
+  min-width: min(520px, 100%);
+  margin: -4px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.formNotice.success {
+  border: 1px solid rgba(66, 199, 184, 0.35);
+  background: rgba(66, 199, 184, 0.12);
+  color: var(--accent);
+}
+
+.formNotice.error {
+  border: 1px solid rgba(255, 125, 125, 0.35);
+  background: rgba(255, 125, 125, 0.12);
+  color: var(--danger);
+}
+
 .toolbar {
   display: flex;
   align-items: center;

@@ -72,6 +72,28 @@ function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
 }
 
+function createExternalId(type, userId) {
+  const safeUserId = (userId || "partner").replace(/[^a-zA-Z0-9_-]/g, "");
+  return `domain-${safeUserId}-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.message ?? "요청 처리에 실패했습니다.");
+  }
+
+  return result;
+}
+
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [session, setSession] = useState(null);
@@ -82,6 +104,11 @@ export default function Home() {
   const [chargeUserId, setChargeUserId] = useState("");
   const [chargeDepositor, setChargeDepositor] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawBank, setWithdrawBank] = useState("");
+  const [withdrawAccountHolder, setWithdrawAccountHolder] = useState("");
+  const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
+  const [chargeStatus, setChargeStatus] = useState(null);
+  const [withdrawStatus, setWithdrawStatus] = useState(null);
   const [dashboard, setDashboard] = useState(null);
 
   useEffect(() => {
@@ -149,6 +176,57 @@ export default function Home() {
   }
 
   const partner = session?.partner ?? dashboard?.partner;
+  const sessionUserId = session?.user?.loginId ?? "";
+
+  async function handleChargeSubmit() {
+    setChargeStatus(null);
+
+    try {
+      const result = await postJson("/api/integration/charge-requests", {
+        externalId: createExternalId("charge", chargeUserId || sessionUserId),
+        partner,
+        userId: chargeUserId || sessionUserId,
+        depositorName: chargeDepositor,
+        amount: Number(chargeAmount)
+      });
+      setChargeStatus({
+        type: "success",
+        message: result.message ?? "충전신청이 관리자에 전송되었습니다."
+      });
+      setChargeAmount("");
+    } catch (error) {
+      setChargeStatus({
+        type: "error",
+        message: error.message
+      });
+    }
+  }
+
+  async function handleWithdrawSubmit() {
+    setWithdrawStatus(null);
+
+    try {
+      const result = await postJson("/api/integration/domain-exchanges", {
+        externalId: createExternalId("exchange", sessionUserId),
+        partner,
+        userId: sessionUserId,
+        amount: Number(withdrawAmount),
+        bankName: withdrawBank,
+        accountHolder: withdrawAccountHolder,
+        accountNumber: withdrawAccountNumber
+      });
+      setWithdrawStatus({
+        type: "success",
+        message: result.message ?? "환전신청이 관리자에 전송되었습니다."
+      });
+      setWithdrawAmount("");
+    } catch (error) {
+      setWithdrawStatus({
+        type: "error",
+        message: error.message
+      });
+    }
+  }
 
   return (
     <main className={dark ? "shell dark" : "shell light"}>
@@ -225,13 +303,26 @@ export default function Home() {
             amount={chargeAmount}
             chargeUserId={chargeUserId}
             depositor={chargeDepositor}
+            status={chargeStatus}
             setAmount={setChargeAmount}
             setChargeUserId={setChargeUserId}
             setDepositor={setChargeDepositor}
+            onSubmit={handleChargeSubmit}
           />
         )}
         {active === "withdraw" && (
-          <WithdrawPage amount={withdrawAmount} setAmount={setWithdrawAmount} />
+          <WithdrawPage
+            accountHolder={withdrawAccountHolder}
+            accountNumber={withdrawAccountNumber}
+            amount={withdrawAmount}
+            bankName={withdrawBank}
+            status={withdrawStatus}
+            setAccountHolder={setWithdrawAccountHolder}
+            setAccountNumber={setWithdrawAccountNumber}
+            setAmount={setWithdrawAmount}
+            setBankName={setWithdrawBank}
+            onSubmit={handleWithdrawSubmit}
+          />
         )}
         {active === "orders" && <OrdersPage />}
         {active === "settlement" && <SettlementPage />}
@@ -352,9 +443,11 @@ function ChargePage({
   amount,
   chargeUserId,
   depositor,
+  status,
   setAmount,
   setChargeUserId,
-  setDepositor
+  setDepositor,
+  onSubmit
 }) {
   return (
     <PageFrame title="충전">
@@ -389,12 +482,24 @@ function ChargePage({
           <AmountButtons onPick={(value) => setAmount(value ? String(value) : "")} />
         </div>
       </section>
-      <button className="primaryAction" type="button">충전 신청</button>
+      <button className="primaryAction" onClick={onSubmit} type="button">충전 신청</button>
+      <FormNotice status={status} />
     </PageFrame>
   );
 }
 
-function WithdrawPage({ amount, setAmount }) {
+function WithdrawPage({
+  accountHolder,
+  accountNumber,
+  amount,
+  bankName,
+  status,
+  setAccountHolder,
+  setAccountNumber,
+  setAmount,
+  setBankName,
+  onSubmit
+}) {
   return (
     <PageFrame title="출금">
       <section className="formTable">
@@ -411,10 +516,36 @@ function WithdrawPage({ amount, setAmount }) {
           />
           <AmountButtons includeAll onPick={(value) => setAmount(value ? String(value) : "")} />
         </div>
-        <div className="labelCell">환전계좌</div>
-        <div className="valueCell strong">고객센터에 문의</div>
+        <div className="labelCell">출금은행</div>
+        <div className="valueCell">
+          <input
+            className="valueInput"
+            onChange={(event) => setBankName(event.target.value)}
+            placeholder="출금은행 입력"
+            value={bankName}
+          />
+        </div>
+        <div className="labelCell">예금주</div>
+        <div className="valueCell">
+          <input
+            className="valueInput"
+            onChange={(event) => setAccountHolder(event.target.value)}
+            placeholder="예금주 입력"
+            value={accountHolder}
+          />
+        </div>
+        <div className="labelCell">계좌번호</div>
+        <div className="valueCell">
+          <input
+            className="valueInput"
+            onChange={(event) => setAccountNumber(event.target.value)}
+            placeholder="계좌번호 입력"
+            value={accountNumber}
+          />
+        </div>
       </section>
-      <button className="primaryAction" type="button">환전신청하기</button>
+      <button className="primaryAction" onClick={onSubmit} type="button">환전신청하기</button>
+      <FormNotice status={status} />
       <DataTable
         columns={["ID", "출금은행", "예금주", "계좌번호", "요청금액", "요청일", "완료일", "상태"]}
         rows={mockWithdraws.map((row) => [
@@ -431,6 +562,14 @@ function WithdrawPage({ amount, setAmount }) {
       <Pagination />
     </PageFrame>
   );
+}
+
+function FormNotice({ status }) {
+  if (!status) {
+    return null;
+  }
+
+  return <p className={`formNotice ${status.type}`}>{status.message}</p>;
 }
 
 function OrdersPage() {
