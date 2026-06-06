@@ -30,42 +30,152 @@ const navItems = [
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
 
-const mockOrders = [
+const chargeRequests = [
   {
-    id: "3a040cca",
+    id: "38ce11d0",
     bank: "-",
     holder: "-",
     account: "-",
-    amount: "50,000,000 원",
-    buyer: "05.25",
-    requestedAt: "26-05-25 23:11:09",
-    changedAt: "26-05-25 23:11:09",
+    amount: "151,700,000 원",
+    buyer: "06.05",
+    requestedAt: "26-06-05 23:29:14",
+    changedAt: "26-06-05 23:29:18",
+    status: "승인"
+  },
+  {
+    id: "13853910",
+    bank: "-",
+    holder: "-",
+    account: "-",
+    amount: "141,230,000 원",
+    buyer: "06.04",
+    requestedAt: "26-06-04 23:28:47",
+    changedAt: "26-06-04 23:28:50",
     status: "승인"
   }
 ];
 
-const mockWithdraws = [
+const domainExchangeRequests = [
   {
-    id: "a68244e5-14",
+    id: "fd50d0c8-a3",
     bank: "국민은행",
     holder: "s",
     account: "11",
-    amount: "49,700,000 원",
-    requestedAt: "26-05-25 23:40:59",
-    completedAt: "26-05-25 23:41:08",
+    amount: "150,865,650 원",
+    requestedAt: "26-06-05 23:41:33",
+    completedAt: "26-06-05 23:41:40",
+    status: "승인"
+  },
+  {
+    id: "e3498e89-3",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "140,453,235 원",
+    requestedAt: "26-06-04 23:43:30",
+    completedAt: "26-06-04 23:43:53",
+    status: "승인"
+  },
+  {
+    id: "70dec670-0",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "141,020,100 원",
+    requestedAt: "26-06-03 23:38:11",
+    completedAt: "26-06-03 23:38:17",
+    status: "승인"
+  },
+  {
+    id: "83d9fdf7-b0",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "156,136,500 원",
+    requestedAt: "26-06-02 23:50:15",
+    completedAt: "26-06-02 23:50:43",
+    status: "승인"
+  },
+  {
+    id: "dded1f9e-19",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "279,747,365 원",
+    requestedAt: "26-06-01 23:40:07",
+    completedAt: "26-06-01 23:40:10",
+    status: "승인"
+  },
+  {
+    id: "f83feb62-b5",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "157,588,760 원",
+    requestedAt: "26-05-30 23:39:57",
+    completedAt: "26-05-30 23:40:02",
+    status: "승인"
+  },
+  {
+    id: "6092b8f6-ff",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "149,080,120 원",
+    requestedAt: "26-05-29 23:48:27",
+    completedAt: "26-05-29 23:48:32",
+    status: "승인"
+  },
+  {
+    id: "eaa98ef6-3c",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "139,905,500 원",
+    requestedAt: "26-05-28 23:45:08",
+    completedAt: "26-05-28 23:45:13",
+    status: "승인"
+  },
+  {
+    id: "408a2976-f9",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "131,277,580 원",
+    requestedAt: "26-05-27 23:58:26",
+    completedAt: "26-05-27 23:58:52",
+    status: "승인"
+  },
+  {
+    id: "59bb575d-4",
+    bank: "국민은행",
+    holder: "s",
+    account: "11",
+    amount: "126,069,020 원",
+    requestedAt: "26-05-27 00:26:27",
+    completedAt: "26-05-27 00:32:38",
     status: "승인"
   }
 ];
 
 const settlementRows = [
-  ["26-05-19", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-20", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-21", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-22", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-23", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-24", "0 원", "0 원", "0 원", "0 원", "No Data"],
-  ["26-05-25", "50,000,000 원", "300,000 원", "49,700,000 원", "49,700,000 원", "0 원"],
-  ["26-05-26", "0 원", "0 원", "0 원", "0 원", "0 원"]
+  ["26-05-30", "158,540,000 원", "951,240 원", "157,588,760 원", "157,588,760 원", "0 원"],
+  ["26-05-31", "150,200,000 원", "901,200 원", "149,298,800 원", "0 원", "149,298,800 원"],
+  ["26-06-01", "131,170,000 원", "721,435 원", "130,448,565 원", "279,747,365 원", "0 원"],
+  ["26-06-02", "157,000,000 원", "863,500 원", "156,136,500 원", "156,136,500 원", "0 원"],
+  ["26-06-03", "141,800,000 원", "779,900 원", "141,020,100 원", "141,020,100 원", "0 원"],
+  ["26-06-04", "141,230,000 원", "776,765 원", "140,453,235 원", "140,453,235 원", "0 원"],
+  ["26-06-05", "151,700,000 원", "834,350 원", "150,865,650 원", "150,865,650 원", "0 원"],
+  ["26-06-06", "0 원", "0 원", "0 원", "0 원", "0 원"]
+];
+
+const settlementTotalRow = [
+  "합계",
+  "1,031,640,000 원",
+  "5,828,390 원",
+  "1,025,811,610 원",
+  "1,025,811,610 원",
+  ""
 ];
 
 function formatWon(value) {
@@ -548,7 +658,7 @@ function WithdrawPage({
       <FormNotice status={status} />
       <DataTable
         columns={["ID", "출금은행", "예금주", "계좌번호", "요청금액", "요청일", "완료일", "상태"]}
-        rows={mockWithdraws.map((row) => [
+        rows={domainExchangeRequests.map((row) => [
           row.id,
           row.bank,
           row.holder,
@@ -595,7 +705,7 @@ function OrdersPage() {
       </div>
       <DataTable
         columns={["ID", "은행", "예금주", "계좌번호", "요청금액", "구매자", "요청일", "상태변경일", "상태"]}
-        rows={mockOrders.map((row) => [
+        rows={chargeRequests.map((row) => [
           row.id,
           row.bank,
           row.holder,
@@ -625,7 +735,7 @@ function SettlementPage() {
       </div>
       <DataTable
         columns={["날짜", "충전", "수수료", "충전(수수료제외)", "환전", "보유금액"]}
-        rows={[...settlementRows, ["합계", "50,000,000 원", "300,000 원", "49,700,000 원", "49,700,000 원", ""]]}
+        rows={[...settlementRows, settlementTotalRow]}
       />
     </PageFrame>
   );
