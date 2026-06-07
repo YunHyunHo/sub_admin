@@ -64,7 +64,7 @@ function appendDomainParams(params, partner) {
   if (partner?.domainId) {
     params.set("domainId", partner.domainId);
   } else if (partner?.name || partner?.domain) {
-    params.set("domainName", partner.name || partner.domain);
+    params.set("domainName", partner.domain || partner.name);
   }
 }
 
@@ -122,6 +122,8 @@ export default function Home() {
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
+  const partner = session?.partner ?? dashboard?.partner;
+  const sessionUserId = session?.user?.loginId ?? "";
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -179,17 +181,6 @@ export default function Home() {
     [dashboard]
   );
 
-  if (!loggedIn) {
-    return <LoginScreen onLogin={(result) => {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(result));
-      setSession(result);
-      setLoggedIn(true);
-    }} />;
-  }
-
-  const partner = session?.partner ?? dashboard?.partner;
-  const sessionUserId = session?.user?.loginId ?? "";
-
   useEffect(() => {
     if (!loggedIn || !partner) {
       return;
@@ -233,6 +224,14 @@ export default function Home() {
 
     loadHistoryData();
   }, [loggedIn, partner]);
+
+  if (!loggedIn) {
+    return <LoginScreen onLogin={(result) => {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(result));
+      setSession(result);
+      setLoggedIn(true);
+    }} />;
+  }
 
   async function handleChargeSubmit() {
     setChargeStatus(null);
