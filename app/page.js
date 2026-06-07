@@ -57,25 +57,22 @@ function formatStatus(status) {
   return statusMap[status] ?? status ?? "-";
 }
 
-function sumRows(rows, key) {
-  return rows.reduce((total, row) => total + (Number(row?.[key]) || 0), 0);
-}
-
-function getLastDefinedValue(rows, key) {
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    if (rows[index]?.[key] != null) {
-      return rows[index][key];
-    }
-  }
-
-  return null;
-}
-
 function getDefaultDateRange() {
   const now = new Date();
   const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const from = new Date(to);
   from.setDate(to.getDate() - 7);
+
+  return {
+    from: formatLocalDate(from),
+    to: formatLocalDate(to)
+  };
+}
+
+function getCurrentMonthDateRange() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   return {
     from: formatLocalDate(from),
@@ -144,6 +141,7 @@ export default function Home() {
   const [domainExchangeRequests, setDomainExchangeRequests] = useState([]);
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
+  const [monthlySettlementTotal, setMonthlySettlementTotal] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
@@ -203,24 +201,20 @@ export default function Home() {
 
   const totals = useMemo(
     () => {
-      const chargeAmount = settlementTotal?.chargeAmount ?? sumRows(settlementRows, "chargeAmount");
-      const feeAmount = settlementTotal?.feeAmount ?? sumRows(settlementRows, "feeAmount");
-      const exchangeAmount = settlementTotal?.exchangeAmount ?? sumRows(settlementRows, "exchangeAmount");
-      const lastBalance = getLastDefinedValue(settlementRows, "balanceAmount");
-      const balanceAmount =
-        settlementTotal?.balanceAmount ??
-        lastBalance ??
-        0;
+      const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
+      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
+      const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
+      const balanceAmount = monthlySettlementTotal?.balanceAmount ?? 0;
 
       return [
         ["입금", formatWon(chargeAmount)],
         ["수수료", formatWon(feeAmount)],
-        ["환전", formatWon(exchangeAmount)],
+        ["환전", formatWon(balanceAmount)],
         ["잔고", formatWon(balanceAmount)],
-        ["환전액", formatWon(exchangeAmount)]
+        ["환전액", formatWon(monthlyExchangeAmount)]
       ];
     },
-    [settlementRows, settlementTotal]
+    [monthlySettlementTotal]
   );
 
   const waitingSummary = useMemo(
@@ -238,6 +232,7 @@ export default function Home() {
 
     async function loadHistoryData() {
       const range = getDefaultDateRange();
+      const monthRange = getCurrentMonthDateRange();
       const baseParams = new URLSearchParams({
         page: "1",
         pageSize: "10",
@@ -256,17 +251,22 @@ export default function Home() {
         const settlementParams = new URLSearchParams(baseParams);
         settlementParams.delete("page");
         settlementParams.delete("pageSize");
+        const monthlySettlementParams = new URLSearchParams(settlementParams);
+        monthlySettlementParams.set("from", monthRange.from);
+        monthlySettlementParams.set("to", monthRange.to);
 
-        const [charges, exchanges, settlements] = await Promise.all([
+        const [charges, exchanges, settlements, monthlySettlements] = await Promise.all([
           getJson(`/api/integration/charge-requests?${baseParams.toString()}`),
           getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`),
-          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`)
+          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`),
+          getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`)
         ]);
 
         setChargeRequests(charges.items ?? []);
         setDomainExchangeRequests(exchanges.items ?? []);
         setSettlementRows(settlements.items ?? []);
         setSettlementTotal(settlements.total ?? null);
+        setMonthlySettlementTotal(monthlySettlements.total ?? null);
       } catch (error) {
         setHistoryError(error.message);
       }
