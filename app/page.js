@@ -147,6 +147,15 @@ export default function Home() {
   const [dashboard, setDashboard] = useState(null);
   const partner = session?.partner ?? dashboard?.partner;
   const sessionUserId = session?.user?.loginId ?? "";
+  const availableWithdrawAmount = useMemo(
+    () => {
+      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
+      const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
+
+      return Math.max(feeAmount - monthlyExchangeAmount, 0);
+    },
+    [monthlySettlementTotal]
+  );
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -204,17 +213,16 @@ export default function Home() {
       const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
       const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
       const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
-      const availableFeeAmount = Math.max(feeAmount - monthlyExchangeAmount, 0);
 
       return [
         ["입금", formatWon(chargeAmount)],
         ["수수료", formatWon(feeAmount)],
         ["환전", formatWon(monthlyExchangeAmount)],
-        ["잔고", formatWon(availableFeeAmount)],
+        ["잔고", formatWon(availableWithdrawAmount)],
         ["환전액", formatWon(monthlyExchangeAmount)]
       ];
     },
-    [monthlySettlementTotal]
+    [availableWithdrawAmount, monthlySettlementTotal]
   );
 
   const waitingSummary = useMemo(
@@ -318,12 +326,22 @@ export default function Home() {
   async function handleWithdrawSubmit() {
     setWithdrawStatus(null);
 
+    const amount = Number(withdrawAmount);
+
+    if (amount > availableWithdrawAmount) {
+      setWithdrawStatus({
+        type: "error",
+        message: "보유금액보다 큰 금액은 환전신청할 수 없습니다."
+      });
+      return;
+    }
+
     try {
       const result = await postJson("/api/integration/domain-exchanges", {
         externalId: createExternalId("exchange", sessionUserId),
         partner,
         userId: sessionUserId,
-        amount: Number(withdrawAmount),
+        amount,
         bankName: withdrawBank,
         accountHolder: withdrawAccountHolder,
         accountNumber: withdrawAccountNumber
@@ -338,7 +356,7 @@ export default function Home() {
           bankName: withdrawBank,
           accountHolder: withdrawAccountHolder,
           accountNumber: withdrawAccountNumber,
-          amount: Number(withdrawAmount),
+          amount,
           requestedAt: "방금",
           completedAt: "-",
           status: "PENDING"
@@ -444,6 +462,7 @@ export default function Home() {
             accountHolder={withdrawAccountHolder}
             accountNumber={withdrawAccountNumber}
             amount={withdrawAmount}
+            availableAmount={availableWithdrawAmount}
             bankName={withdrawBank}
             rows={domainExchangeRequests}
             status={withdrawStatus}
@@ -551,7 +570,7 @@ function Toggle({ label, checked, onChange, icons }) {
   );
 }
 
-function AmountButtons({ onPick, includeAll }) {
+function AmountButtons({ allAmount = 0, onPick, includeAll }) {
   return (
     <div className="amountButtons">
       {moneyButtons.map((value) => (
@@ -560,7 +579,7 @@ function AmountButtons({ onPick, includeAll }) {
         </button>
       ))}
       {includeAll && (
-        <button onClick={() => onPick(49700000)} type="button">
+        <button onClick={() => onPick(allAmount)} type="button">
           전액
         </button>
       )}
@@ -627,6 +646,7 @@ function WithdrawPage({
   accountHolder,
   accountNumber,
   amount,
+  availableAmount,
   bankName,
   rows,
   status,
@@ -640,7 +660,7 @@ function WithdrawPage({
     <PageFrame title="출금">
       <section className="formTable">
         <div className="labelCell">보유금액</div>
-        <div className="valueCell strong">₩ 0</div>
+        <div className="valueCell strong">₩ {formatWon(availableAmount)}</div>
         <div className="labelCell">환전금액</div>
         <div className="valueCell moneyInput">
           <span>₩</span>
@@ -650,7 +670,11 @@ function WithdrawPage({
             placeholder="환전 금액 입력"
             value={amount ? formatWon(Number(amount)) : ""}
           />
-          <AmountButtons includeAll onPick={(value) => setAmount(value ? String(value) : "")} />
+          <AmountButtons
+            allAmount={availableAmount}
+            includeAll
+            onPick={(value) => setAmount(value ? String(value) : "")}
+          />
         </div>
         <div className="labelCell">출금은행</div>
         <div className="valueCell">
