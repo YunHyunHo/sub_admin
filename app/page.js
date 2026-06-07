@@ -204,13 +204,13 @@ export default function Home() {
       const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
       const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
       const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
-      const balanceAmount = monthlySettlementTotal?.balanceAmount ?? 0;
+      const availableFeeAmount = Math.max(feeAmount - monthlyExchangeAmount, 0);
 
       return [
         ["입금", formatWon(chargeAmount)],
         ["수수료", formatWon(feeAmount)],
-        ["환전", formatWon(balanceAmount)],
-        ["잔고", formatWon(balanceAmount)],
+        ["환전", formatWon(monthlyExchangeAmount)],
+        ["잔고", formatWon(availableFeeAmount)],
         ["환전액", formatWon(monthlyExchangeAmount)]
       ];
     },
