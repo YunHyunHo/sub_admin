@@ -656,6 +656,12 @@ function WithdrawPage({
   setBankName,
   onSubmit
 }) {
+  function setLimitedAmount(value) {
+    const nextAmount = Math.min(Number(value) || 0, availableAmount);
+
+    setAmount(nextAmount ? String(nextAmount) : "");
+  }
+
   return (
     <PageFrame title="출금">
       <section className="formTable">
@@ -666,14 +672,14 @@ function WithdrawPage({
           <span>₩</span>
           <input
             inputMode="numeric"
-            onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
+            onChange={(event) => setLimitedAmount(event.target.value.replace(/[^0-9]/g, ""))}
             placeholder="환전 금액 입력"
             value={amount ? formatWon(Number(amount)) : ""}
           />
           <AmountButtons
             allAmount={availableAmount}
             includeAll
-            onPick={(value) => setAmount(value ? String(value) : "")}
+            onPick={setLimitedAmount}
           />
         </div>
         <div className="labelCell">출금은행</div>
