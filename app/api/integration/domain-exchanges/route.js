@@ -45,16 +45,21 @@ export async function POST(request) {
   const { response, result } = await forwardIntegrationRequest(DOMAIN_EXCHANGE_API_URL, payload);
 
   if (!response.ok || !result?.ok) {
+    const message =
+      response.status === 405
+        ? "마스터 관리자 환전신청 API가 POST 요청을 허용하지 않습니다. 연동 API 활성화가 필요합니다."
+        : result?.message ?? "환전신청 전송에 실패했습니다.";
+
     console.warn("[integration-exchange] failed", {
       externalId: payload.externalId,
       status: response.status,
-      message: result?.message
+      message
     });
 
     return Response.json(
       {
         ok: false,
-        message: result?.message ?? "환전신청 전송에 실패했습니다."
+        message
       },
       { status: response.status || 500 }
     );
