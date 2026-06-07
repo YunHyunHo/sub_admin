@@ -125,7 +125,8 @@ button {
   margin-top: 12px;
 }
 
-.loginPanel button:disabled {
+.loginPanel button:disabled,
+.primaryAction:disabled {
   cursor: progress;
   opacity: 0.7;
 }

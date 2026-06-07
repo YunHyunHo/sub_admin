@@ -38,6 +38,14 @@ function formatWonText(value) {
   return `${formatWon(Number(value) || 0)} 원`;
 }
 
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function formatStatus(status) {
   const statusMap = {
     PENDING: "대기",
@@ -55,8 +63,8 @@ function getDefaultDateRange() {
   from.setDate(to.getDate() - 7);
 
   return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10)
+    from: formatLocalDate(from),
+    to: formatLocalDate(to)
   };
 }
 
@@ -116,10 +124,12 @@ export default function Home() {
   const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
   const [chargeStatus, setChargeStatus] = useState(null);
   const [withdrawStatus, setWithdrawStatus] = useState(null);
+  const [chargeSubmitting, setChargeSubmitting] = useState(false);
   const [chargeRequests, setChargeRequests] = useState([]);
   const [domainExchangeRequests, setDomainExchangeRequests] = useState([]);
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
   const partner = session?.partner ?? dashboard?.partner;
@@ -223,7 +233,7 @@ export default function Home() {
     }
 
     loadHistoryData();
-  }, [loggedIn, partner]);
+  }, [loggedIn, partner, historyRefreshKey]);
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
@@ -234,7 +244,12 @@ export default function Home() {
   }
 
   async function handleChargeSubmit() {
+    if (chargeSubmitting) {
+      return;
+    }
+
     setChargeStatus(null);
+    setChargeSubmitting(true);
 
     try {
       const result = await postJson("/api/integration/charge-requests", {
@@ -248,23 +263,15 @@ export default function Home() {
         type: "success",
         message: result.message ?? "충전신청이 관리자에 전송되었습니다."
       });
-      setChargeRequests((current) => [
-        {
-          id: result.requestId ?? "대기",
-          depositorName: chargeDepositor,
-          amount: Number(chargeAmount),
-          requestedAt: "방금",
-          changedAt: "-",
-          status: "PENDING"
-        },
-        ...current
-      ]);
       setChargeAmount("");
+      setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
       setChargeStatus({
         type: "error",
         message: error.message
       });
+    } finally {
+      setChargeSubmitting(false);
     }
   }
 
@@ -382,6 +389,7 @@ export default function Home() {
             amount={chargeAmount}
             chargeUserId={chargeUserId}
             depositor={chargeDepositor}
+            submitting={chargeSubmitting}
             status={chargeStatus}
             setAmount={setChargeAmount}
             setChargeUserId={setChargeUserId}
@@ -525,6 +533,7 @@ function ChargePage({
   amount,
   chargeUserId,
   depositor,
+  submitting,
   status,
   setAmount,
   setChargeUserId,
@@ -564,7 +573,9 @@ function ChargePage({
           <AmountButtons onPick={(value) => setAmount(value ? String(value) : "")} />
         </div>
       </section>
-      <button className="primaryAction" onClick={onSubmit} type="button">충전 신청</button>
+      <button className="primaryAction" disabled={submitting} onClick={onSubmit} type="button">
+        {submitting ? "신청 중" : "충전 신청"}
+      </button>
       <FormNotice status={status} />
     </PageFrame>
   );
