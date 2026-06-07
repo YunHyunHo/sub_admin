@@ -29,6 +29,7 @@ const navItems = [
 ];
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
+const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
 
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
@@ -54,6 +55,20 @@ function formatStatus(status) {
   };
 
   return statusMap[status] ?? status ?? "-";
+}
+
+function sumRows(rows, key) {
+  return rows.reduce((total, row) => total + (Number(row?.[key]) || 0), 0);
+}
+
+function getLastDefinedValue(rows, key) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index]?.[key] != null) {
+      return rows[index][key];
+    }
+  }
+
+  return null;
 }
 
 function getDefaultDateRange() {
@@ -144,6 +159,11 @@ export default function Home() {
 
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const savedActiveMenu = window.localStorage.getItem(ACTIVE_MENU_STORAGE_KEY);
+
+    if (navItems.some((item) => item.key === savedActiveMenu)) {
+      setActive(savedActiveMenu);
+    }
 
     if (!savedSession) {
       return;
@@ -157,6 +177,10 @@ export default function Home() {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(ACTIVE_MENU_STORAGE_KEY, active);
+  }, [active]);
 
   useEffect(() => {
     function updateKoreaTime() {
@@ -179,16 +203,32 @@ export default function Home() {
 
   const totals = useMemo(
     () => {
-      const data = dashboard?.totals;
+      const chargeAmount = settlementTotal?.chargeAmount ?? sumRows(settlementRows, "chargeAmount");
+      const feeAmount = settlementTotal?.feeAmount ?? sumRows(settlementRows, "feeAmount");
+      const exchangeAmount = settlementTotal?.exchangeAmount ?? sumRows(settlementRows, "exchangeAmount");
+      const lastBalance = getLastDefinedValue(settlementRows, "balanceAmount");
+      const balanceAmount =
+        settlementTotal?.balanceAmount ??
+        lastBalance ??
+        0;
+
       return [
-        ["입금", formatWon(data?.deposit ?? 0)],
-        ["수수료", formatWon(data?.fee ?? 0)],
-        ["환전", formatWon(data?.exchange ?? 0)],
-        ["잔고", formatWon(data?.remaining ?? 0)],
-        ["환전액", formatWon(data?.exchange ?? 0)]
+        ["입금", formatWon(chargeAmount)],
+        ["수수료", formatWon(feeAmount)],
+        ["환전", formatWon(exchangeAmount)],
+        ["잔고", formatWon(balanceAmount)],
+        ["환전액", formatWon(exchangeAmount)]
       ];
     },
-    [dashboard]
+    [settlementRows, settlementTotal]
+  );
+
+  const waitingSummary = useMemo(
+    () => ({
+      charge: chargeRequests.filter((row) => row?.status === "PENDING").length,
+      withdraw: domainExchangeRequests.filter((row) => row?.status === "PENDING").length
+    }),
+    [chargeRequests, domainExchangeRequests]
   );
 
   useEffect(() => {
@@ -353,8 +393,8 @@ export default function Home() {
         <section className="sideCard waiting">
           <h3>대기 현황</h3>
           <div>
-            <span>충전 0</span>
-            <span>출금 0</span>
+            <span>충전 {formatWon(waitingSummary.charge)}</span>
+            <span>출금 {formatWon(waitingSummary.withdraw)}</span>
           </div>
         </section>
 
@@ -371,8 +411,10 @@ export default function Home() {
             <button
               onClick={() => {
                 window.localStorage.removeItem(SESSION_STORAGE_KEY);
+                window.localStorage.removeItem(ACTIVE_MENU_STORAGE_KEY);
                 setSession(null);
                 setLoggedIn(false);
+                setActive("charge");
               }}
               type="button"
             >
