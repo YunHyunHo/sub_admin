@@ -27,6 +27,29 @@ export async function forwardIntegrationRequest(endpoint, payload) {
   };
 }
 
+export async function forwardIntegrationQuery(endpoint, searchParams) {
+  const url = new URL(endpoint);
+
+  for (const [key, value] of searchParams.entries()) {
+    if (value) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(INTEGRATION_API_KEY ? { "X-API-Key": INTEGRATION_API_KEY } : {})
+    }
+  });
+  const result = await response.json().catch(() => null);
+
+  return {
+    response,
+    result
+  };
+}
+
 export function integrationError(message, status = 400) {
   return Response.json(
     {

@@ -30,156 +30,53 @@ const navItems = [
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
 
-const chargeRequests = [
-  {
-    id: "38ce11d0",
-    bank: "-",
-    holder: "-",
-    account: "-",
-    amount: "151,700,000 원",
-    buyer: "06.05",
-    requestedAt: "26-06-05 23:29:14",
-    changedAt: "26-06-05 23:29:18",
-    status: "승인"
-  },
-  {
-    id: "13853910",
-    bank: "-",
-    holder: "-",
-    account: "-",
-    amount: "141,230,000 원",
-    buyer: "06.04",
-    requestedAt: "26-06-04 23:28:47",
-    changedAt: "26-06-04 23:28:50",
-    status: "승인"
-  }
-];
-
-const domainExchangeRequests = [
-  {
-    id: "fd50d0c8-a3",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "150,865,650 원",
-    requestedAt: "26-06-05 23:41:33",
-    completedAt: "26-06-05 23:41:40",
-    status: "승인"
-  },
-  {
-    id: "e3498e89-3",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "140,453,235 원",
-    requestedAt: "26-06-04 23:43:30",
-    completedAt: "26-06-04 23:43:53",
-    status: "승인"
-  },
-  {
-    id: "70dec670-0",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "141,020,100 원",
-    requestedAt: "26-06-03 23:38:11",
-    completedAt: "26-06-03 23:38:17",
-    status: "승인"
-  },
-  {
-    id: "83d9fdf7-b0",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "156,136,500 원",
-    requestedAt: "26-06-02 23:50:15",
-    completedAt: "26-06-02 23:50:43",
-    status: "승인"
-  },
-  {
-    id: "dded1f9e-19",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "279,747,365 원",
-    requestedAt: "26-06-01 23:40:07",
-    completedAt: "26-06-01 23:40:10",
-    status: "승인"
-  },
-  {
-    id: "f83feb62-b5",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "157,588,760 원",
-    requestedAt: "26-05-30 23:39:57",
-    completedAt: "26-05-30 23:40:02",
-    status: "승인"
-  },
-  {
-    id: "6092b8f6-ff",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "149,080,120 원",
-    requestedAt: "26-05-29 23:48:27",
-    completedAt: "26-05-29 23:48:32",
-    status: "승인"
-  },
-  {
-    id: "eaa98ef6-3c",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "139,905,500 원",
-    requestedAt: "26-05-28 23:45:08",
-    completedAt: "26-05-28 23:45:13",
-    status: "승인"
-  },
-  {
-    id: "408a2976-f9",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "131,277,580 원",
-    requestedAt: "26-05-27 23:58:26",
-    completedAt: "26-05-27 23:58:52",
-    status: "승인"
-  },
-  {
-    id: "59bb575d-4",
-    bank: "국민은행",
-    holder: "s",
-    account: "11",
-    amount: "126,069,020 원",
-    requestedAt: "26-05-27 00:26:27",
-    completedAt: "26-05-27 00:32:38",
-    status: "승인"
-  }
-];
-
-const settlementRows = [
-  ["26-05-30", "158,540,000 원", "951,240 원", "157,588,760 원", "157,588,760 원", "0 원"],
-  ["26-05-31", "150,200,000 원", "901,200 원", "149,298,800 원", "0 원", "149,298,800 원"],
-  ["26-06-01", "131,170,000 원", "721,435 원", "130,448,565 원", "279,747,365 원", "0 원"],
-  ["26-06-02", "157,000,000 원", "863,500 원", "156,136,500 원", "156,136,500 원", "0 원"],
-  ["26-06-03", "141,800,000 원", "779,900 원", "141,020,100 원", "141,020,100 원", "0 원"],
-  ["26-06-04", "141,230,000 원", "776,765 원", "140,453,235 원", "140,453,235 원", "0 원"],
-  ["26-06-05", "151,700,000 원", "834,350 원", "150,865,650 원", "150,865,650 원", "0 원"],
-  ["26-06-06", "0 원", "0 원", "0 원", "0 원", "0 원"]
-];
-
-const settlementTotalRow = [
-  "합계",
-  "1,031,640,000 원",
-  "5,828,390 원",
-  "1,025,811,610 원",
-  "1,025,811,610 원",
-  ""
-];
-
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
+}
+
+function formatWonText(value) {
+  return `${formatWon(Number(value) || 0)} 원`;
+}
+
+function formatStatus(status) {
+  const statusMap = {
+    PENDING: "대기",
+    APPROVED: "승인",
+    REJECTED: "거절"
+  };
+
+  return statusMap[status] ?? status ?? "-";
+}
+
+function getDefaultDateRange() {
+  const now = new Date();
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const from = new Date(to);
+  from.setDate(to.getDate() - 7);
+
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10)
+  };
+}
+
+function appendDomainParams(params, partner) {
+  if (partner?.domainId) {
+    params.set("domainId", partner.domainId);
+  } else if (partner?.name || partner?.domain) {
+    params.set("domainName", partner.name || partner.domain);
+  }
+}
+
+async function getJson(url) {
+  const response = await fetch(url);
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.message ?? "데이터 조회에 실패했습니다.");
+  }
+
+  return result;
 }
 
 function createExternalId(type, userId) {
@@ -219,6 +116,11 @@ export default function Home() {
   const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
   const [chargeStatus, setChargeStatus] = useState(null);
   const [withdrawStatus, setWithdrawStatus] = useState(null);
+  const [chargeRequests, setChargeRequests] = useState([]);
+  const [domainExchangeRequests, setDomainExchangeRequests] = useState([]);
+  const [settlementRows, setSettlementRows] = useState([]);
+  const [settlementTotal, setSettlementTotal] = useState(null);
+  const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
 
   useEffect(() => {
@@ -288,6 +190,50 @@ export default function Home() {
   const partner = session?.partner ?? dashboard?.partner;
   const sessionUserId = session?.user?.loginId ?? "";
 
+  useEffect(() => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    async function loadHistoryData() {
+      const range = getDefaultDateRange();
+      const baseParams = new URLSearchParams({
+        page: "1",
+        pageSize: "10",
+        from: range.from,
+        to: range.to
+      });
+      appendDomainParams(baseParams, partner);
+
+      if (!baseParams.has("domainId") && !baseParams.has("domainName")) {
+        setHistoryError("도메인 정보가 없어 내역을 조회할 수 없습니다.");
+        return;
+      }
+
+      try {
+        setHistoryError("");
+        const settlementParams = new URLSearchParams(baseParams);
+        settlementParams.delete("page");
+        settlementParams.delete("pageSize");
+
+        const [charges, exchanges, settlements] = await Promise.all([
+          getJson(`/api/integration/charge-requests?${baseParams.toString()}`),
+          getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`),
+          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`)
+        ]);
+
+        setChargeRequests(charges.items ?? []);
+        setDomainExchangeRequests(exchanges.items ?? []);
+        setSettlementRows(settlements.items ?? []);
+        setSettlementTotal(settlements.total ?? null);
+      } catch (error) {
+        setHistoryError(error.message);
+      }
+    }
+
+    loadHistoryData();
+  }, [loggedIn, partner]);
+
   async function handleChargeSubmit() {
     setChargeStatus(null);
 
@@ -303,6 +249,17 @@ export default function Home() {
         type: "success",
         message: result.message ?? "충전신청이 관리자에 전송되었습니다."
       });
+      setChargeRequests((current) => [
+        {
+          id: result.requestId ?? "대기",
+          depositorName: chargeDepositor,
+          amount: Number(chargeAmount),
+          requestedAt: "방금",
+          changedAt: "-",
+          status: "PENDING"
+        },
+        ...current
+      ]);
       setChargeAmount("");
     } catch (error) {
       setChargeStatus({
@@ -329,6 +286,19 @@ export default function Home() {
         type: "success",
         message: result.message ?? "환전신청이 관리자에 전송되었습니다."
       });
+      setDomainExchangeRequests((current) => [
+        {
+          id: result.requestId ?? "대기",
+          bankName: withdrawBank,
+          accountHolder: withdrawAccountHolder,
+          accountNumber: withdrawAccountNumber,
+          amount: Number(withdrawAmount),
+          requestedAt: "방금",
+          completedAt: "-",
+          status: "PENDING"
+        },
+        ...current
+      ]);
       setWithdrawAmount("");
     } catch (error) {
       setWithdrawStatus({
@@ -426,6 +396,7 @@ export default function Home() {
             accountNumber={withdrawAccountNumber}
             amount={withdrawAmount}
             bankName={withdrawBank}
+            rows={domainExchangeRequests}
             status={withdrawStatus}
             setAccountHolder={setWithdrawAccountHolder}
             setAccountNumber={setWithdrawAccountNumber}
@@ -434,8 +405,10 @@ export default function Home() {
             onSubmit={handleWithdrawSubmit}
           />
         )}
-        {active === "orders" && <OrdersPage />}
-        {active === "settlement" && <SettlementPage />}
+        {active === "orders" && <OrdersPage error={historyError} rows={chargeRequests} />}
+        {active === "settlement" && (
+          <SettlementPage error={historyError} rows={settlementRows} total={settlementTotal} />
+        )}
       </section>
     </main>
   );
@@ -603,6 +576,7 @@ function WithdrawPage({
   accountNumber,
   amount,
   bankName,
+  rows,
   status,
   setAccountHolder,
   setAccountNumber,
@@ -658,15 +632,15 @@ function WithdrawPage({
       <FormNotice status={status} />
       <DataTable
         columns={["ID", "출금은행", "예금주", "계좌번호", "요청금액", "요청일", "완료일", "상태"]}
-        rows={domainExchangeRequests.map((row) => [
-          row.id,
-          row.bank,
-          row.holder,
-          row.account,
-          row.amount,
-          row.requestedAt,
-          row.completedAt,
-          row.status
+        rows={rows.map((row) => [
+          row.id ?? "-",
+          row.bankName ?? "-",
+          row.accountHolder ?? "-",
+          row.accountNumber ?? "-",
+          formatWonText(row.amount),
+          row.requestedAt ?? "-",
+          row.completedAt ?? "-",
+          formatStatus(row.status)
         ])}
       />
       <Pagination />
@@ -682,7 +656,7 @@ function FormNotice({ status }) {
   return <p className={`formNotice ${status.type}`}>{status.message}</p>;
 }
 
-function OrdersPage() {
+function OrdersPage({ error, rows }) {
   return (
     <PageFrame title="구매내역">
       <div className="toolbar">
@@ -703,18 +677,19 @@ function OrdersPage() {
           초기화
         </button>
       </div>
+      <FormNotice status={error ? { type: "error", message: error } : null} />
       <DataTable
         columns={["ID", "은행", "예금주", "계좌번호", "요청금액", "구매자", "요청일", "상태변경일", "상태"]}
-        rows={chargeRequests.map((row) => [
-          row.id,
-          row.bank,
-          row.holder,
-          row.account,
-          row.amount,
-          row.buyer,
-          row.requestedAt,
-          row.changedAt,
-          row.status
+        rows={rows.map((row) => [
+          row.id ?? "-",
+          row.bankName ?? "-",
+          row.depositorName ?? "-",
+          row.accountNumber ?? "-",
+          formatWonText(row.amount),
+          row.buyer ?? "-",
+          row.requestedAt ?? "-",
+          row.changedAt ?? "-",
+          formatStatus(row.status)
         ])}
       />
       <Pagination />
@@ -722,7 +697,27 @@ function OrdersPage() {
   );
 }
 
-function SettlementPage() {
+function SettlementPage({ error, rows, total }) {
+  const tableRows = rows.map((row) => [
+    row.date ?? "-",
+    formatWonText(row.chargeAmount),
+    formatWonText(row.feeAmount),
+    formatWonText(row.netChargeAmount),
+    formatWonText(row.exchangeAmount),
+    formatWonText(row.balanceAmount)
+  ]);
+
+  if (total) {
+    tableRows.push([
+      "합계",
+      formatWonText(total.chargeAmount),
+      formatWonText(total.feeAmount),
+      formatWonText(total.netChargeAmount),
+      formatWonText(total.exchangeAmount),
+      total.balanceAmount == null ? "" : formatWonText(total.balanceAmount)
+    ]);
+  }
+
   return (
     <PageFrame title="일정산">
       <div className="toolbar settlementTools">
@@ -733,9 +728,10 @@ function SettlementPage() {
         <DateInput value="26-05-26" />
         <button className="toolbarBtn" type="button">조회</button>
       </div>
+      <FormNotice status={error ? { type: "error", message: error } : null} />
       <DataTable
         columns={["날짜", "충전", "수수료", "충전(수수료제외)", "환전", "보유금액"]}
-        rows={[...settlementRows, settlementTotalRow]}
+        rows={tableRows}
       />
     </PageFrame>
   );

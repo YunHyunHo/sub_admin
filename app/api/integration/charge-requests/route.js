@@ -1,4 +1,4 @@
-import { forwardIntegrationRequest, getDomainPayload, integrationError } from "../_utils";
+import { forwardIntegrationQuery, forwardIntegrationRequest, getDomainPayload, integrationError } from "../_utils";
 
 const CHARGE_API_URL =
   process.env.CHARGE_API_URL ?? "https://laylow.me/api/integration/charge-requests";
@@ -55,6 +55,23 @@ export async function POST(request) {
       {
         ok: false,
         message: result?.message ?? "충전신청 전송에 실패했습니다."
+      },
+      { status: response.status || 500 }
+    );
+  }
+
+  return Response.json(result);
+}
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const { response, result } = await forwardIntegrationQuery(CHARGE_API_URL, searchParams);
+
+  if (!response.ok || !result?.ok) {
+    return Response.json(
+      {
+        ok: false,
+        message: result?.message ?? "충전신청 내역 조회에 실패했습니다."
       },
       { status: response.status || 500 }
     );
