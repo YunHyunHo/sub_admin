@@ -30,6 +30,7 @@ const navItems = [
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
+const HISTORY_REFRESH_INTERVAL_MS = 10000;
 
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
@@ -282,6 +283,18 @@ export default function Home() {
 
     loadHistoryData();
   }, [loggedIn, partner, historyRefreshKey]);
+
+  useEffect(() => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setHistoryRefreshKey((current) => current + 1);
+    }, HISTORY_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [loggedIn, partner]);
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
