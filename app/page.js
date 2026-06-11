@@ -30,7 +30,7 @@ const navItems = [
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
-const HISTORY_REFRESH_INTERVAL_MS = 10000;
+const HISTORY_REFRESH_INTERVAL_MS = 5000;
 
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
