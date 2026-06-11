@@ -311,6 +311,8 @@ export default function Home() {
         type: "success",
         message: result.message ?? "충전신청이 관리자에 전송되었습니다."
       });
+      setChargeUserId("");
+      setChargeDepositor("");
       setChargeAmount("");
       setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
