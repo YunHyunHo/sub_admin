@@ -155,18 +155,10 @@ export default function Home() {
   const sessionUserId = session?.user?.loginId ?? "";
   const withdrawBalanceAmount = useMemo(
     () => {
-      if (monthlySettlementTotal?.balanceAmount != null) {
-        return parseWon(monthlySettlementTotal.balanceAmount);
-      }
-
-      if (monthlySettlementTotal?.netChargeAmount != null) {
-        return parseWon(monthlySettlementTotal.netChargeAmount);
-      }
-
-      const chargeAmount = parseWon(monthlySettlementTotal?.chargeAmount);
       const feeAmount = parseWon(monthlySettlementTotal?.feeAmount);
+      const exchangeAmount = parseWon(monthlySettlementTotal?.exchangeAmount);
 
-      return Math.max(chargeAmount - feeAmount, 0);
+      return Math.max(feeAmount - exchangeAmount, 0);
     },
     [monthlySettlementTotal]
   );
