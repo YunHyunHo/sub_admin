@@ -412,6 +412,9 @@ export default function Home() {
       ]);
       setPendingExchangeAmount((current) => current + amount);
       setWithdrawAmount("");
+      setWithdrawBank("");
+      setWithdrawAccountHolder("");
+      setWithdrawAccountNumber("");
     } catch (error) {
       setWithdrawStatus({
         type: "error",
