@@ -150,10 +150,18 @@ export default function Home() {
   const sessionUserId = session?.user?.loginId ?? "";
   const availableWithdrawAmount = useMemo(
     () => {
-      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
-      const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
+      if (monthlySettlementTotal?.balanceAmount != null) {
+        return Number(monthlySettlementTotal.balanceAmount) || 0;
+      }
 
-      return Math.max(feeAmount - monthlyExchangeAmount, 0);
+      if (monthlySettlementTotal?.netChargeAmount != null) {
+        return Number(monthlySettlementTotal.netChargeAmount) || 0;
+      }
+
+      const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
+      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
+
+      return Math.max(chargeAmount - feeAmount, 0);
     },
     [monthlySettlementTotal]
   );
