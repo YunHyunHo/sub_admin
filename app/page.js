@@ -36,8 +36,12 @@ function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
 }
 
+function parseWon(value) {
+  return Number(String(value ?? "").replace(/[^0-9]/g, "")) || 0;
+}
+
 function formatWonText(value) {
-  return `${formatWon(Number(value) || 0)} 원`;
+  return `${formatWon(parseWon(value))} 원`;
 }
 
 function formatLocalDate(date) {
@@ -151,15 +155,15 @@ export default function Home() {
   const availableWithdrawAmount = useMemo(
     () => {
       if (monthlySettlementTotal?.balanceAmount != null) {
-        return Number(monthlySettlementTotal.balanceAmount) || 0;
+        return parseWon(monthlySettlementTotal.balanceAmount);
       }
 
       if (monthlySettlementTotal?.netChargeAmount != null) {
-        return Number(monthlySettlementTotal.netChargeAmount) || 0;
+        return parseWon(monthlySettlementTotal.netChargeAmount);
       }
 
-      const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
-      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
+      const chargeAmount = parseWon(monthlySettlementTotal?.chargeAmount);
+      const feeAmount = parseWon(monthlySettlementTotal?.feeAmount);
 
       return Math.max(chargeAmount - feeAmount, 0);
     },
@@ -219,9 +223,9 @@ export default function Home() {
 
   const totals = useMemo(
     () => {
-      const chargeAmount = monthlySettlementTotal?.chargeAmount ?? 0;
-      const feeAmount = monthlySettlementTotal?.feeAmount ?? 0;
-      const monthlyExchangeAmount = monthlySettlementTotal?.exchangeAmount ?? 0;
+      const chargeAmount = parseWon(monthlySettlementTotal?.chargeAmount);
+      const feeAmount = parseWon(monthlySettlementTotal?.feeAmount);
+      const monthlyExchangeAmount = parseWon(monthlySettlementTotal?.exchangeAmount);
 
       return [
         ["입금", formatWon(chargeAmount)],
@@ -349,12 +353,17 @@ export default function Home() {
   async function handleWithdrawSubmit() {
     setWithdrawStatus(null);
 
-    const amount = Number(withdrawAmount);
+    const requestedAmount = parseWon(withdrawAmount);
+    const amount = Math.min(requestedAmount, availableWithdrawAmount);
 
-    if (amount > availableWithdrawAmount) {
+    if (requestedAmount !== amount) {
+      setWithdrawAmount(amount ? String(amount) : "");
+    }
+
+    if (amount <= 0) {
       setWithdrawStatus({
         type: "error",
-        message: "보유금액보다 큰 금액은 환전신청할 수 없습니다."
+        message: "환전 금액을 입력해주세요."
       });
       return;
     }
@@ -680,7 +689,7 @@ function WithdrawPage({
   onSubmit
 }) {
   function setLimitedAmount(value) {
-    const nextAmount = Math.min(Number(value) || 0, availableAmount);
+    const nextAmount = Math.min(parseWon(value), availableAmount);
 
     setAmount(nextAmount ? String(nextAmount) : "");
   }
@@ -697,7 +706,7 @@ function WithdrawPage({
             inputMode="numeric"
             onChange={(event) => setLimitedAmount(event.target.value.replace(/[^0-9]/g, ""))}
             placeholder="환전 금액 입력"
-            value={amount ? formatWon(Number(amount)) : ""}
+            value={amount ? formatWon(parseWon(amount)) : ""}
           />
           <AmountButtons
             allAmount={availableAmount}
