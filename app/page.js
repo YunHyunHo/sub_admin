@@ -147,12 +147,13 @@ export default function Home() {
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [monthlySettlementTotal, setMonthlySettlementTotal] = useState(null);
+  const [pendingExchangeAmount, setPendingExchangeAmount] = useState(0);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
   const partner = session?.partner ?? dashboard?.partner;
   const sessionUserId = session?.user?.loginId ?? "";
-  const availableWithdrawAmount = useMemo(
+  const withdrawBalanceAmount = useMemo(
     () => {
       if (monthlySettlementTotal?.balanceAmount != null) {
         return parseWon(monthlySettlementTotal.balanceAmount);
@@ -168,6 +169,10 @@ export default function Home() {
       return Math.max(chargeAmount - feeAmount, 0);
     },
     [monthlySettlementTotal]
+  );
+  const availableWithdrawAmount = useMemo(
+    () => Math.max(withdrawBalanceAmount - pendingExchangeAmount, 0),
+    [pendingExchangeAmount, withdrawBalanceAmount]
   );
 
   useEffect(() => {
@@ -275,16 +280,26 @@ export default function Home() {
         const monthlySettlementParams = new URLSearchParams(settlementParams);
         monthlySettlementParams.set("from", monthRange.from);
         monthlySettlementParams.set("to", monthRange.to);
+        const monthlyExchangeParams = new URLSearchParams(baseParams);
+        monthlyExchangeParams.set("pageSize", "100");
+        monthlyExchangeParams.set("from", monthRange.from);
+        monthlyExchangeParams.set("to", monthRange.to);
 
-        const [charges, exchanges, settlements, monthlySettlements] = await Promise.all([
+        const [charges, exchanges, monthlyExchanges, settlements, monthlySettlements] = await Promise.all([
           getJson(`/api/integration/charge-requests?${baseParams.toString()}`),
           getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`),
+          getJson(`/api/integration/domain-exchanges?${monthlyExchangeParams.toString()}`),
           getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`),
           getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`)
         ]);
 
         setChargeRequests(charges.items ?? []);
         setDomainExchangeRequests(exchanges.items ?? []);
+        setPendingExchangeAmount(
+          (monthlyExchanges.items ?? [])
+            .filter((row) => row?.status === "PENDING")
+            .reduce((sum, row) => sum + parseWon(row?.amount), 0)
+        );
         setSettlementRows(settlements.items ?? []);
         setSettlementTotal(settlements.total ?? null);
         setMonthlySettlementTotal(monthlySettlements.total ?? null);
@@ -395,6 +410,7 @@ export default function Home() {
         },
         ...current
       ]);
+      setPendingExchangeAmount((current) => current + amount);
       setWithdrawAmount("");
     } catch (error) {
       setWithdrawStatus({
