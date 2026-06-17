@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -29,8 +29,10 @@ const navItems = [
 ];
 
 const SESSION_STORAGE_KEY = "winpay_partner_session";
+const SESSION_LAST_ACTIVITY_STORAGE_KEY = "winpay_partner_last_activity";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
 const HISTORY_REFRESH_INTERVAL_MS = 5000;
+const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
@@ -175,6 +177,15 @@ export default function Home() {
     [pendingExchangeAmount, withdrawBalanceAmount]
   );
 
+  const logout = useCallback(() => {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    window.localStorage.removeItem(SESSION_LAST_ACTIVITY_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_MENU_STORAGE_KEY);
+    setSession(null);
+    setLoggedIn(false);
+    setActive("charge");
+  }, []);
+
   useEffect(() => {
     fetch("/api/dashboard")
       .then((response) => response.json())
@@ -195,17 +206,73 @@ export default function Home() {
     }
 
     try {
+      const lastActivity = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_STORAGE_KEY));
+      const isExpired = lastActivity && Date.now() - lastActivity > INACTIVITY_LOGOUT_MS;
+
+      if (isExpired) {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        window.localStorage.removeItem(SESSION_LAST_ACTIVITY_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_MENU_STORAGE_KEY);
+        return;
+      }
+
       const parsedSession = JSON.parse(savedSession);
+      window.localStorage.setItem(SESSION_LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
       setSession(parsedSession);
       setLoggedIn(true);
     } catch {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(SESSION_LAST_ACTIVITY_STORAGE_KEY);
     }
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem(ACTIVE_MENU_STORAGE_KEY, active);
   }, [active]);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      return;
+    }
+
+    let lastWriteAt = 0;
+
+    function markActivity() {
+      const now = Date.now();
+
+      if (now - lastWriteAt < 30000) {
+        return;
+      }
+
+      lastWriteAt = now;
+      window.localStorage.setItem(SESSION_LAST_ACTIVITY_STORAGE_KEY, String(now));
+    }
+
+    function checkInactivity() {
+      const lastActivity = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_STORAGE_KEY));
+
+      if (lastActivity && Date.now() - lastActivity > INACTIVITY_LOGOUT_MS) {
+        logout();
+      }
+    }
+
+    const activityEvents = ["click", "keydown", "mousemove", "scroll", "touchstart"];
+
+    markActivity();
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, markActivity, { passive: true });
+    });
+    window.addEventListener("visibilitychange", checkInactivity);
+    const timer = window.setInterval(checkInactivity, 60000);
+
+    return () => {
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, markActivity);
+      });
+      window.removeEventListener("visibilitychange", checkInactivity);
+      window.clearInterval(timer);
+    };
+  }, [loggedIn, logout]);
 
   useEffect(() => {
     function updateKoreaTime() {
@@ -326,6 +393,7 @@ export default function Home() {
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(result));
+      window.localStorage.setItem(SESSION_LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
       setSession(result);
       setLoggedIn(true);
     }} />;
@@ -478,13 +546,7 @@ export default function Home() {
               Contact Us
             </button>
             <button
-              onClick={() => {
-                window.localStorage.removeItem(SESSION_STORAGE_KEY);
-                window.localStorage.removeItem(ACTIVE_MENU_STORAGE_KEY);
-                setSession(null);
-                setLoggedIn(false);
-                setActive("charge");
-              }}
+              onClick={logout}
               type="button"
             >
               <LogOut size={15} />
