@@ -36,6 +36,36 @@ const HISTORY_REFRESH_INTERVAL_MS = 5000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const NOTICE_SOUND_PATH = "/sounds/notice.mp3";
 
+function getSharedNoticeAudio() {
+  if (!window.__winpayNoticeAudio) {
+    window.__winpayNoticeAudio = new Audio(NOTICE_SOUND_PATH);
+    window.__winpayNoticeAudio.preload = "auto";
+  }
+
+  return window.__winpayNoticeAudio;
+}
+
+function unlockSharedNoticeSound() {
+  if (window.__winpayNoticeSoundUnlocked) {
+    return;
+  }
+
+  const audio = getSharedNoticeAudio();
+  const previousVolume = audio.volume;
+
+  audio.volume = 0;
+  audio.play()
+    .then(() => {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = previousVolume || 1;
+      window.__winpayNoticeSoundUnlocked = true;
+    })
+    .catch(() => {
+      audio.volume = previousVolume || 1;
+    });
+}
+
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
 }
@@ -216,32 +246,19 @@ export default function Home() {
 
   function getNoticeAudio() {
     if (!noticeAudioRef.current) {
-      noticeAudioRef.current = new Audio(NOTICE_SOUND_PATH);
-      noticeAudioRef.current.preload = "auto";
+      noticeAudioRef.current = getSharedNoticeAudio();
     }
 
     return noticeAudioRef.current;
   }
 
   function unlockNoticeSound() {
-    if (noticeSoundUnlockedRef.current) {
+    if (noticeSoundUnlockedRef.current || window.__winpayNoticeSoundUnlocked) {
       return;
     }
 
-    const audio = getNoticeAudio();
-    const previousVolume = audio.volume;
-
-    audio.volume = 0;
-    audio.play()
-      .then(() => {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.volume = previousVolume || 1;
-        noticeSoundUnlockedRef.current = true;
-      })
-      .catch(() => {
-        audio.volume = previousVolume || 1;
-      });
+    unlockSharedNoticeSound();
+    noticeSoundUnlockedRef.current = Boolean(window.__winpayNoticeSoundUnlocked);
   }
 
   function playNoticeSound() {
@@ -748,6 +765,7 @@ function LoginScreen({ onLogin }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    unlockSharedNoticeSound();
     setError("");
     setSubmitting(true);
 
