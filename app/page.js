@@ -58,6 +58,17 @@ function formatWonText(value) {
   return `${formatWon(parseWon(value))} 원`;
 }
 
+function formatMonthDayTime(value) {
+  const text = String(value ?? "").trim();
+  const matched = text.match(/^(?:\d{2}|\d{4})-(\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
+
+  if (!matched) {
+    return text || "-";
+  }
+
+  return [matched[1], matched[2]].filter(Boolean).join(" ");
+}
+
 function formatLocalDate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -983,8 +994,8 @@ function OrdersPage({ error, rows }) {
           row.accountNumber ?? "-",
           formatWonText(row.amount),
           row.buyer ?? "-",
-          row.requestedAt ?? "-",
-          row.changedAt ?? "-",
+          formatMonthDayTime(row.requestedAt),
+          formatMonthDayTime(row.changedAt),
           formatStatus(row.status)
         ])}
         variant="orders"
@@ -1084,6 +1095,7 @@ function DataTable({ columns, rows, highlightColumns = [], variant = "" }) {
                     highlightColumns.includes(cellIndex) ? "highlightCell" : ""
                   ].filter(Boolean).join(" ")}
                   key={`${cell}-${cellIndex}`}
+                  title={String(cell)}
                 >
                   {cell}
                 </td>

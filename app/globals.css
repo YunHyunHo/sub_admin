@@ -490,6 +490,7 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: center;
   white-space: nowrap;
+  font-size: 15px;
   font-weight: 800;
 }
 
@@ -512,36 +513,65 @@ tbody tr:last-child td {
 
 .highlightCell {
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 950;
 }
 
 .ordersTable table {
-  min-width: 1040px;
+  min-width: 1076px;
   table-layout: fixed;
+}
+
+.ordersTable th,
+.ordersTable td {
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ordersTable th:first-child,
 .ordersTable td:first-child {
-  width: 72px;
-  max-width: 72px;
+  width: 64px;
+  max-width: 64px;
   overflow: hidden;
   text-overflow: clip;
 }
 
+.ordersTable th:nth-child(2),
+.ordersTable td:nth-child(2) {
+  width: 100px;
+}
+
 .ordersTable th:nth-child(3),
 .ordersTable td:nth-child(3) {
-  width: 150px;
+  width: 82px;
 }
 
 .ordersTable th:nth-child(4),
 .ordersTable td:nth-child(4) {
-  width: 210px;
+  width: 230px;
 }
 
 .ordersTable th:nth-child(5),
 .ordersTable td:nth-child(5) {
-  width: 170px;
+  width: 180px;
+}
+
+.ordersTable th:nth-child(6),
+.ordersTable td:nth-child(6) {
+  width: 90px;
+}
+
+.ordersTable th:nth-child(7),
+.ordersTable td:nth-child(7),
+.ordersTable th:nth-child(8),
+.ordersTable td:nth-child(8) {
+  width: 130px;
+}
+
+.ordersTable th:nth-child(9),
+.ordersTable td:nth-child(9) {
+  width: 70px;
 }
 
 .pagination {
