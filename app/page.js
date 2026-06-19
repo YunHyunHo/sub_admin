@@ -756,12 +756,6 @@ function ChargePage({
     setAmount(nextAmount ? String(nextAmount) : "");
   }
 
-  function handleAmountChange(value) {
-    const nextAmount = floorToTransactionUnit(value);
-
-    setAmount(nextAmount ? String(nextAmount) : "");
-  }
-
   return (
     <PageFrame title="충전">
       <section className="formTable">
@@ -788,7 +782,7 @@ function ChargePage({
           <span>₩</span>
           <input
             inputMode="numeric"
-            onChange={(event) => handleAmountChange(event.target.value)}
+            onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
             placeholder="충전 금액 입력"
             value={amount ? formatWon(Number(amount)) : ""}
           />
@@ -818,7 +812,7 @@ function WithdrawPage({
   onSubmit
 }) {
   function setLimitedAmount(value) {
-    const nextAmount = Math.min(floorToTransactionUnit(value), floorToTransactionUnit(availableAmount));
+    const nextAmount = Math.min(parseWon(value), floorToTransactionUnit(availableAmount));
 
     setAmount(nextAmount ? String(nextAmount) : "");
   }
@@ -847,7 +841,7 @@ function WithdrawPage({
           <span>₩</span>
           <input
             inputMode="numeric"
-            onChange={(event) => setLimitedAmount(event.target.value)}
+            onChange={(event) => setLimitedAmount(event.target.value.replace(/[^0-9]/g, ""))}
             placeholder="환전 금액 입력"
             value={amount ? formatWon(parseWon(amount)) : ""}
           />
