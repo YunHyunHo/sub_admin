@@ -178,6 +178,8 @@ export default function Home() {
   const [dashboard, setDashboard] = useState(null);
   const exchangeStatusRef = useRef(new Map());
   const exchangeStatusReadyRef = useRef(false);
+  const noticeAudioRef = useRef(null);
+  const noticeSoundUnlockedRef = useRef(false);
   const partner = session?.partner ?? dashboard?.partner;
   const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
@@ -212,8 +214,41 @@ export default function Home() {
     setActive("charge");
   }, []);
 
+  function getNoticeAudio() {
+    if (!noticeAudioRef.current) {
+      noticeAudioRef.current = new Audio(NOTICE_SOUND_PATH);
+      noticeAudioRef.current.preload = "auto";
+    }
+
+    return noticeAudioRef.current;
+  }
+
+  function unlockNoticeSound() {
+    if (noticeSoundUnlockedRef.current) {
+      return;
+    }
+
+    const audio = getNoticeAudio();
+    const previousVolume = audio.volume;
+
+    audio.volume = 0;
+    audio.play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = previousVolume || 1;
+        noticeSoundUnlockedRef.current = true;
+      })
+      .catch(() => {
+        audio.volume = previousVolume || 1;
+      });
+  }
+
   function playNoticeSound() {
-    const audio = new Audio(NOTICE_SOUND_PATH);
+    const audio = getNoticeAudio();
+
+    audio.volume = 1;
+    audio.currentTime = 0;
     audio.play().catch(() => {});
   }
 
@@ -258,7 +293,7 @@ export default function Home() {
       if (
         exchangeStatusReadyRef.current &&
         previousStatus === "PENDING" &&
-        ["APPROVED", "REJECTED"].includes(row.status)
+        row.status === "APPROVED"
       ) {
         changedRows.push(row);
       }
@@ -328,6 +363,8 @@ export default function Home() {
     let lastWriteAt = 0;
 
     function markActivity() {
+      unlockNoticeSound();
+
       const now = Date.now();
 
       if (now - lastWriteAt < 30000) {
