@@ -270,35 +270,13 @@ export default function Home() {
     audio.play().catch(() => {});
   }
 
-  function showExchangeStatusNotification(row) {
-    const statusLabel = formatStatus(row.status);
-    const amountLabel = formatWonText(row.amount);
-    const title = `출금신청 ${statusLabel}`;
-    const body = `${amountLabel} 출금신청이 ${statusLabel} 처리되었습니다.`;
-
+  function playExchangeApprovalSound() {
     playNoticeSound();
-
-    if (!("Notification" in window)) {
-      return;
-    }
-
-    if (Notification.permission === "granted") {
-      new Notification(title, { body });
-      return;
-    }
-
-    if (Notification.permission === "default") {
-      Notification.requestPermission().then((permission) => {
-        if (permission === "granted") {
-          new Notification(title, { body });
-        }
-      });
-    }
   }
 
   function notifyApprovedExchange(row) {
     if (!row?.id) {
-      showExchangeStatusNotification({ ...row, status: "APPROVED" });
+      playExchangeApprovalSound();
       return;
     }
 
@@ -308,7 +286,7 @@ export default function Home() {
 
     approvedExchangeNotificationRef.current.add(row.id);
     exchangeStatusRef.current.set(row.id, "APPROVED");
-    showExchangeStatusNotification({ ...row, status: "APPROVED" });
+    playExchangeApprovalSound();
   }
 
   function notifyExchangeStatusChanges(rows) {
