@@ -165,6 +165,7 @@ export default function Home() {
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
   const partner = session?.partner ?? dashboard?.partner;
+  const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
   const withdrawBalanceAmount = useMemo(
     () => {
@@ -603,17 +604,12 @@ export default function Home() {
         )}
         {active === "withdraw" && (
           <WithdrawPage
-            accountHolder={withdrawAccountHolder}
-            accountNumber={withdrawAccountNumber}
             amount={withdrawAmount}
             availableAmount={availableWithdrawAmount}
-            bankName={withdrawBank}
             rows={domainExchangeRequests}
             status={withdrawStatus}
-            setAccountHolder={setWithdrawAccountHolder}
-            setAccountNumber={setWithdrawAccountNumber}
             setAmount={setWithdrawAmount}
-            setBankName={setWithdrawBank}
+            withdrawAccount={withdrawAccount}
             onSubmit={handleWithdrawSubmit}
           />
         )}
@@ -798,17 +794,12 @@ function ChargePage({
 }
 
 function WithdrawPage({
-  accountHolder,
-  accountNumber,
   amount,
   availableAmount,
-  bankName,
   rows,
   status,
-  setAccountHolder,
-  setAccountNumber,
   setAmount,
-  setBankName,
+  withdrawAccount,
   onSubmit
 }) {
   function setLimitedAmount(value) {
@@ -831,6 +822,12 @@ function WithdrawPage({
     setLimitedAmount(floorToTransactionUnit(amount) + value);
   }
 
+  const accountSummary = [
+    withdrawAccount?.bankName,
+    withdrawAccount?.accountHolder,
+    withdrawAccount?.accountNumber
+  ].filter(Boolean).join(" / ");
+
   return (
     <PageFrame title="출금">
       <section className="formTable">
@@ -852,8 +849,8 @@ function WithdrawPage({
           />
         </div>
         <div className="labelCell">신청계좌</div>
-        <div className="valueCell">
-          관리자에 설정된 출금 수신 계좌로 자동 신청됩니다.
+        <div className={accountSummary ? "valueCell strong" : "valueCell"}>
+          {accountSummary || "관리자 설정 계좌를 확인할 수 없습니다."}
         </div>
       </section>
       <button className="primaryAction" onClick={onSubmit} type="button">환전신청하기</button>

@@ -3,6 +3,31 @@ const DEMO_PASSWORD = "0000";
 const AUTH_API_URL = process.env.AUTH_API_URL ?? "https://laylow.me/partner/auth/login";
 const AUTH_API_KEY = process.env.AUTH_API_KEY;
 
+function normalizeWithdrawAccount(source) {
+  const account =
+    source?.withdrawAccount ??
+    source?.exchangeAccount ??
+    source?.settlementAccount ??
+    source?.account ??
+    {};
+
+  return {
+    bankName: account.bankName ?? source?.bankName ?? source?.withdrawBankName ?? "",
+    accountHolder:
+      account.accountHolder ??
+      account.holderName ??
+      source?.accountHolder ??
+      source?.withdrawAccountHolder ??
+      "",
+    accountNumber:
+      account.accountNumber ??
+      account.number ??
+      source?.accountNumber ??
+      source?.withdrawAccountNumber ??
+      ""
+  };
+}
+
 async function requestPartnerLogin({ loginId, password }) {
   const response = await fetch(AUTH_API_URL, {
     method: "POST",
@@ -60,6 +85,13 @@ export async function POST(request) {
       partnerDomain: result.partner?.domain
     });
 
+    const withdrawAccount = normalizeWithdrawAccount({
+      ...result,
+      ...result.user,
+      ...result.domain,
+      ...result.partner
+    });
+
     return Response.json({
       ok: true,
       token: result.token,
@@ -74,7 +106,8 @@ export async function POST(request) {
         id: result.partner?.id ?? result.user?.partnerId ?? "",
         name: result.partner?.name ?? result.user?.partnerName ?? "",
         domainId: result.partner?.domainId ?? "",
-        domain: result.partner?.domain ?? ""
+        domain: result.partner?.domain ?? "",
+        withdrawAccount
       }
     });
   }
