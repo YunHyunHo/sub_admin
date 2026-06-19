@@ -208,6 +208,7 @@ export default function Home() {
   const [dashboard, setDashboard] = useState(null);
   const exchangeStatusRef = useRef(new Map());
   const exchangeStatusReadyRef = useRef(false);
+  const approvedExchangeNotificationRef = useRef(new Set());
   const noticeAudioRef = useRef(null);
   const noticeSoundUnlockedRef = useRef(false);
   const partner = session?.partner ?? dashboard?.partner;
@@ -295,6 +296,21 @@ export default function Home() {
     }
   }
 
+  function notifyApprovedExchange(row) {
+    if (!row?.id) {
+      showExchangeStatusNotification({ ...row, status: "APPROVED" });
+      return;
+    }
+
+    if (approvedExchangeNotificationRef.current.has(row.id)) {
+      return;
+    }
+
+    approvedExchangeNotificationRef.current.add(row.id);
+    exchangeStatusRef.current.set(row.id, "APPROVED");
+    showExchangeStatusNotification({ ...row, status: "APPROVED" });
+  }
+
   function notifyExchangeStatusChanges(rows) {
     const previousStatuses = exchangeStatusRef.current;
     const nextStatuses = new Map();
@@ -320,7 +336,7 @@ export default function Home() {
 
     exchangeStatusRef.current = nextStatuses;
     exchangeStatusReadyRef.current = true;
-    changedRows.forEach(showExchangeStatusNotification);
+    changedRows.forEach(notifyApprovedExchange);
   }
 
   useEffect(() => {
@@ -333,7 +349,45 @@ export default function Home() {
   useEffect(() => {
     exchangeStatusRef.current = new Map();
     exchangeStatusReadyRef.current = false;
+    approvedExchangeNotificationRef.current = new Set();
   }, [loggedIn, partner?.domainId, partner?.domain]);
+
+  useEffect(() => {
+    if (!loggedIn || !partner?.domainId || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const eventsUrl = `https://laylow.me/api/integration/domain-exchanges/events?domainId=${encodeURIComponent(partner.domainId)}`;
+    const events = new EventSource(eventsUrl);
+
+    function handleApproved(event) {
+      try {
+        const data = JSON.parse(event.data);
+
+        notifyApprovedExchange({
+          id: data.id,
+          domainId: data.domainId,
+          amount: data.amount,
+          status: data.status ?? "APPROVED",
+          completedAt: data.approvedAt
+        });
+        setHistoryRefreshKey((current) => current + 1);
+      } catch {
+        notifyApprovedExchange({
+          id: `sse-${Date.now()}`,
+          amount: 0,
+          status: "APPROVED"
+        });
+      }
+    }
+
+    events.addEventListener("domain-exchange-approved", handleApproved);
+
+    return () => {
+      events.removeEventListener("domain-exchange-approved", handleApproved);
+      events.close();
+    };
+  }, [loggedIn, partner?.domainId]);
 
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
