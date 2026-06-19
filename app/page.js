@@ -851,32 +851,9 @@ function WithdrawPage({
             onPick={handleAmountPick}
           />
         </div>
-        <div className="labelCell">출금은행</div>
+        <div className="labelCell">신청계좌</div>
         <div className="valueCell">
-          <input
-            className="valueInput"
-            onChange={(event) => setBankName(event.target.value)}
-            placeholder="출금은행 입력"
-            value={bankName}
-          />
-        </div>
-        <div className="labelCell">예금주</div>
-        <div className="valueCell">
-          <input
-            className="valueInput"
-            onChange={(event) => setAccountHolder(event.target.value)}
-            placeholder="예금주 입력"
-            value={accountHolder}
-          />
-        </div>
-        <div className="labelCell">계좌번호</div>
-        <div className="valueCell">
-          <input
-            className="valueInput"
-            onChange={(event) => setAccountNumber(event.target.value)}
-            placeholder="계좌번호 입력"
-            value={accountNumber}
-          />
+          관리자에 설정된 출금 수신 계좌로 자동 신청됩니다.
         </div>
       </section>
       <button className="primaryAction" onClick={onSubmit} type="button">환전신청하기</button>

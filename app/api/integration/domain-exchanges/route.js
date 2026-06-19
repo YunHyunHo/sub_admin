@@ -20,19 +20,24 @@ export async function POST(request) {
     return integrationError("환전 금액을 입력해주세요.");
   }
 
-  if (!body.bankName?.trim() || !body.accountHolder?.trim() || !body.accountNumber?.trim()) {
-    return integrationError("출금은행, 예금주, 계좌번호를 모두 입력해주세요.");
-  }
-
   const payload = {
     externalId: body.externalId,
     ...domainPayload,
     userId: body.userId.trim(),
-    amount,
-    bankName: body.bankName.trim(),
-    accountHolder: body.accountHolder.trim(),
-    accountNumber: body.accountNumber.trim()
+    amount
   };
+
+  if (body.bankName?.trim()) {
+    payload.bankName = body.bankName.trim();
+  }
+
+  if (body.accountHolder?.trim()) {
+    payload.accountHolder = body.accountHolder.trim();
+  }
+
+  if (body.accountNumber?.trim()) {
+    payload.accountNumber = body.accountNumber.trim();
+  }
 
   console.info("[integration-exchange] request", {
     externalId: payload.externalId,
