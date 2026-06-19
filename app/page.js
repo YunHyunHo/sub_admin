@@ -975,8 +975,9 @@ function OrdersPage({ error, rows }) {
       <FormNotice status={error ? { type: "error", message: error } : null} />
       <DataTable
         columns={["ID", "은행", "예금주", "계좌번호", "요청금액", "구매자", "요청일", "상태변경일", "상태"]}
+        highlightColumns={[2, 3, 4]}
         rows={rows.map((row) => [
-          row.id ?? "-",
+          row.id ? String(row.id).slice(0, 5) : "-",
           row.bankName ?? "-",
           row.depositorName ?? "-",
           row.accountNumber ?? "-",
@@ -986,6 +987,7 @@ function OrdersPage({ error, rows }) {
           row.changedAt ?? "-",
           formatStatus(row.status)
         ])}
+        variant="orders"
       />
       <Pagination />
     </PageFrame>
@@ -1061,9 +1063,9 @@ function DateInput({ value }) {
   );
 }
 
-function DataTable({ columns, rows }) {
+function DataTable({ columns, rows, highlightColumns = [], variant = "" }) {
   return (
-    <div className="tableWrap">
+    <div className={`tableWrap ${variant ? `${variant}Table` : ""}`}>
       <table>
         <thead>
           <tr>
@@ -1076,7 +1078,13 @@ function DataTable({ columns, rows }) {
           {rows.map((row, index) => (
             <tr key={`${row[0]}-${index}`}>
               {row.map((cell, cellIndex) => (
-                <td className={cell === "승인" ? "statusCell" : ""} key={`${cell}-${cellIndex}`}>
+                <td
+                  className={[
+                    cell === "승인" ? "statusCell" : "",
+                    highlightColumns.includes(cellIndex) ? "highlightCell" : ""
+                  ].filter(Boolean).join(" ")}
+                  key={`${cell}-${cellIndex}`}
+                >
                   {cell}
                 </td>
               ))}

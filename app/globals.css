@@ -510,6 +510,40 @@ tbody tr:last-child td {
   color: var(--accent-2);
 }
 
+.highlightCell {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.ordersTable table {
+  min-width: 1040px;
+  table-layout: fixed;
+}
+
+.ordersTable th:first-child,
+.ordersTable td:first-child {
+  width: 72px;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.ordersTable th:nth-child(3),
+.ordersTable td:nth-child(3) {
+  width: 150px;
+}
+
+.ordersTable th:nth-child(4),
+.ordersTable td:nth-child(4) {
+  width: 210px;
+}
+
+.ordersTable th:nth-child(5),
+.ordersTable td:nth-child(5) {
+  width: 170px;
+}
+
 .pagination {
   position: fixed;
   left: calc(280px + 50%);
