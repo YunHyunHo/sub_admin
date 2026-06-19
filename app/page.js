@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -34,6 +34,7 @@ const SESSION_LAST_ACTIVITY_STORAGE_KEY = "winpay_partner_last_activity";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
 const HISTORY_REFRESH_INTERVAL_MS = 5000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
+const NOTICE_SOUND_PATH = "/sounds/notice.mp3";
 
 function formatWon(value) {
   return new Intl.NumberFormat("ko-KR").format(value);
@@ -164,6 +165,8 @@ export default function Home() {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
+  const exchangeStatusRef = useRef(new Map());
+  const exchangeStatusReadyRef = useRef(false);
   const partner = session?.partner ?? dashboard?.partner;
   const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
@@ -198,12 +201,76 @@ export default function Home() {
     setActive("charge");
   }, []);
 
+  function playNoticeSound() {
+    const audio = new Audio(NOTICE_SOUND_PATH);
+    audio.play().catch(() => {});
+  }
+
+  function showExchangeStatusNotification(row) {
+    const statusLabel = formatStatus(row.status);
+    const amountLabel = formatWonText(row.amount);
+    const title = `출금신청 ${statusLabel}`;
+    const body = `${amountLabel} 출금신청이 ${statusLabel} 처리되었습니다.`;
+
+    playNoticeSound();
+
+    if (!("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return;
+    }
+
+    if (Notification.permission === "default") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          new Notification(title, { body });
+        }
+      });
+    }
+  }
+
+  function notifyExchangeStatusChanges(rows) {
+    const previousStatuses = exchangeStatusRef.current;
+    const nextStatuses = new Map();
+    const changedRows = [];
+
+    rows.forEach((row) => {
+      if (!row?.id || !row?.status) {
+        return;
+      }
+
+      const previousStatus = previousStatuses.get(row.id);
+
+      if (
+        exchangeStatusReadyRef.current &&
+        previousStatus === "PENDING" &&
+        ["APPROVED", "REJECTED"].includes(row.status)
+      ) {
+        changedRows.push(row);
+      }
+
+      nextStatuses.set(row.id, row.status);
+    });
+
+    exchangeStatusRef.current = nextStatuses;
+    exchangeStatusReadyRef.current = true;
+    changedRows.forEach(showExchangeStatusNotification);
+  }
+
   useEffect(() => {
     fetch("/api/dashboard")
       .then((response) => response.json())
       .then(setDashboard)
       .catch(() => setDashboard(null));
   }, []);
+
+  useEffect(() => {
+    exchangeStatusRef.current = new Map();
+    exchangeStatusReadyRef.current = false;
+  }, [loggedIn, partner?.domainId, partner?.domain]);
 
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -372,8 +439,11 @@ export default function Home() {
           getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`)
         ]);
 
+        const exchangeItems = exchanges.items ?? [];
+
         setChargeRequests(charges.items ?? []);
-        setDomainExchangeRequests(exchanges.items ?? []);
+        setDomainExchangeRequests(exchangeItems);
+        notifyExchangeStatusChanges(exchangeItems);
         setPendingExchangeAmount(
           (monthlyExchanges.items ?? [])
             .filter((row) => row?.status === "PENDING")
