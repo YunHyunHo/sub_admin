@@ -649,7 +649,7 @@ export default function Home() {
     setWithdrawStatus(null);
 
     const requestedAmount = parseWon(withdrawAmount);
-    const maxWithdrawAmount = floorToTransactionUnit(availableWithdrawAmount);
+    const maxWithdrawAmount = parseWon(availableWithdrawAmount);
     const amount = Math.min(requestedAmount, maxWithdrawAmount);
 
     if (requestedAmount !== amount) {
@@ -660,14 +660,6 @@ export default function Home() {
       setWithdrawStatus({
         type: "error",
         message: "환전 금액을 입력해주세요."
-      });
-      return;
-    }
-
-    if (!isValidTransactionAmount(amount)) {
-      setWithdrawStatus({
-        type: "error",
-        message: "환전 금액은 1만원 이상, 1만원 단위로 입력해주세요."
       });
       return;
     }
@@ -993,7 +985,7 @@ function WithdrawPage({
   onSubmit
 }) {
   function setLimitedAmount(value) {
-    const nextAmount = Math.min(parseWon(value), floorToTransactionUnit(availableAmount));
+    const nextAmount = Math.min(parseWon(value), parseWon(availableAmount));
 
     setAmount(nextAmount ? String(nextAmount) : "");
   }
@@ -1009,7 +1001,7 @@ function WithdrawPage({
       return;
     }
 
-    setLimitedAmount(floorToTransactionUnit(amount) + value);
+    setLimitedAmount(parseWon(amount) + value);
   }
 
   const accountSummary = [
