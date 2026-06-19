@@ -19,7 +19,8 @@ import {
   WalletCards
 } from "lucide-react";
 
-const moneyButtons = [1000, 5000, 10000, 50000, 100000, 500000, 1000000, 5000000];
+const MIN_TRANSACTION_AMOUNT = 10000;
+const moneyButtons = [10000, 50000, 100000, 500000, 1000000, 5000000];
 
 const navItems = [
   { key: "charge", label: "충전", icon: ArrowDownToLine },
@@ -40,6 +41,16 @@ function formatWon(value) {
 
 function parseWon(value) {
   return Number(String(value ?? "").replace(/[^0-9]/g, "")) || 0;
+}
+
+function floorToTransactionUnit(value) {
+  return Math.floor(parseWon(value) / MIN_TRANSACTION_AMOUNT) * MIN_TRANSACTION_AMOUNT;
+}
+
+function isValidTransactionAmount(value) {
+  const amount = parseWon(value);
+
+  return amount >= MIN_TRANSACTION_AMOUNT && amount % MIN_TRANSACTION_AMOUNT === 0;
 }
 
 function formatWonText(value) {
@@ -407,13 +418,24 @@ export default function Home() {
     setChargeStatus(null);
     setChargeSubmitting(true);
 
+    const amount = parseWon(chargeAmount);
+
+    if (!isValidTransactionAmount(amount)) {
+      setChargeStatus({
+        type: "error",
+        message: "충전 금액은 1만원 이상, 1만원 단위로 입력해주세요."
+      });
+      setChargeSubmitting(false);
+      return;
+    }
+
     try {
       const result = await postJson("/api/integration/charge-requests", {
         externalId: createExternalId("charge", chargeUserId || sessionUserId),
         partner,
         userId: chargeUserId || sessionUserId,
         depositorName: chargeDepositor,
-        amount: Number(chargeAmount)
+        amount
       });
       setChargeStatus({
         type: "success",
@@ -437,7 +459,8 @@ export default function Home() {
     setWithdrawStatus(null);
 
     const requestedAmount = parseWon(withdrawAmount);
-    const amount = Math.min(requestedAmount, availableWithdrawAmount);
+    const maxWithdrawAmount = floorToTransactionUnit(availableWithdrawAmount);
+    const amount = Math.min(requestedAmount, maxWithdrawAmount);
 
     if (requestedAmount !== amount) {
       setWithdrawAmount(amount ? String(amount) : "");
@@ -447,6 +470,14 @@ export default function Home() {
       setWithdrawStatus({
         type: "error",
         message: "환전 금액을 입력해주세요."
+      });
+      return;
+    }
+
+    if (!isValidTransactionAmount(amount)) {
+      setWithdrawStatus({
+        type: "error",
+        message: "환전 금액은 1만원 이상, 1만원 단위로 입력해주세요."
       });
       return;
     }
@@ -687,16 +718,16 @@ function AmountButtons({ allAmount = 0, onPick, includeAll }) {
   return (
     <div className="amountButtons">
       {moneyButtons.map((value) => (
-        <button key={value} onClick={() => onPick(value)} type="button">
-          {value >= 10000 ? `${value / 10000}만원` : `${value / 1000}천원`}
+        <button key={value} onClick={() => onPick(value, "add")} type="button">
+          {value / 10000}만원
         </button>
       ))}
       {includeAll && (
-        <button onClick={() => onPick(allAmount)} type="button">
+        <button onClick={() => onPick(allAmount, "all")} type="button">
           전액
         </button>
       )}
-      <button className="soft" onClick={() => onPick(0)} type="button">
+      <button className="soft" onClick={() => onPick(0, "reset")} type="button">
         리셋
       </button>
     </div>
@@ -714,6 +745,17 @@ function ChargePage({
   setDepositor,
   onSubmit
 }) {
+  function handleAmountPick(value, action) {
+    if (action === "reset") {
+      setAmount("");
+      return;
+    }
+
+    const nextAmount = floorToTransactionUnit(amount) + value;
+
+    setAmount(nextAmount ? String(nextAmount) : "");
+  }
+
   return (
     <PageFrame title="충전">
       <section className="formTable">
@@ -744,7 +786,7 @@ function ChargePage({
             placeholder="충전 금액 입력"
             value={amount ? formatWon(Number(amount)) : ""}
           />
-          <AmountButtons onPick={(value) => setAmount(value ? String(value) : "")} />
+          <AmountButtons onPick={handleAmountPick} />
         </div>
       </section>
       <button className="primaryAction" disabled={submitting} onClick={onSubmit} type="button">
@@ -770,9 +812,23 @@ function WithdrawPage({
   onSubmit
 }) {
   function setLimitedAmount(value) {
-    const nextAmount = Math.min(parseWon(value), availableAmount);
+    const nextAmount = Math.min(parseWon(value), floorToTransactionUnit(availableAmount));
 
     setAmount(nextAmount ? String(nextAmount) : "");
+  }
+
+  function handleAmountPick(value, action) {
+    if (action === "reset") {
+      setAmount("");
+      return;
+    }
+
+    if (action === "all") {
+      setLimitedAmount(value);
+      return;
+    }
+
+    setLimitedAmount(floorToTransactionUnit(amount) + value);
   }
 
   return (
@@ -792,7 +848,7 @@ function WithdrawPage({
           <AmountButtons
             allAmount={availableAmount}
             includeAll
-            onPick={setLimitedAmount}
+            onPick={handleAmountPick}
           />
         </div>
         <div className="labelCell">출금은행</div>
