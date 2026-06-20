@@ -32,6 +32,7 @@ const navItems = [
 const SESSION_STORAGE_KEY = "winpay_partner_session";
 const SESSION_LAST_ACTIVITY_STORAGE_KEY = "winpay_partner_last_activity";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
+const THEME_STORAGE_KEY = "winpay_partner_theme";
 const HISTORY_REFRESH_INTERVAL_MS = 5000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const NOTICE_SOUND_PATH = "/sounds/notice.mp3";
@@ -245,6 +246,11 @@ export default function Home() {
     setActive("charge");
   }, []);
 
+  function handleThemeChange(nextDark) {
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextDark ? "dark" : "light");
+    setDark(nextDark);
+  }
+
   function getNoticeAudio() {
     if (!noticeAudioRef.current) {
       noticeAudioRef.current = getSharedNoticeAudio();
@@ -370,6 +376,11 @@ export default function Home() {
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
     const savedActiveMenu = window.localStorage.getItem(ACTIVE_MENU_STORAGE_KEY);
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    if (savedTheme === "light") {
+      setDark(false);
+    }
 
     if (navItems.some((item) => item.key === savedActiveMenu)) {
       setActive(savedActiveMenu);
@@ -727,7 +738,7 @@ export default function Home() {
         </section>
 
         <div className="sideFooter">
-          <Toggle label="다크 / 라이트" checked={dark} onChange={setDark} icons={[Moon, Sun]} />
+          <Toggle label="다크 / 라이트" checked={dark} onChange={handleThemeChange} icons={[Moon, Sun]} />
           <span className="timeLabel">한국시간</span>
           <time>{koreaTime}</time>
           <span>Version {dashboard?.partner?.version ?? "01.30"}</span>
