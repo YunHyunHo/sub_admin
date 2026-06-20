@@ -90,7 +90,10 @@ X-API-Key: 도메인별_API_KEY
 {
   "externalId": "2ca5ea3d-f95e-4e89-bdb3-3d0f67984f60",
   "depositorName": "홍길동",
-  "amount": 100000
+  "amount": 100000,
+  "bankName": "woori",
+  "accountHolder": "예금주",
+  "accountNumber": "1234567890"
 }
 ```
 
@@ -99,6 +102,11 @@ X-API-Key: 도메인별_API_KEY
 | `externalId` | 1-1에서 생성한 UUID |
 | `depositorName` | Mancoin 요청의 `bankHolderName` |
 | `amount` | Mancoin 응답의 `result.price` |
+| `bankName` | Mancoin 응답의 `result.bank_name` |
+| `accountHolder` | Mancoin 응답의 `result.bank_holder` |
+| `accountNumber` | Mancoin 응답의 `result.bank_account` |
+
+Mancoin 계좌정보는 세 필드를 모두 보내야 합니다. 모두 생략하면 마스터 어드민에 설정된 업체 계좌를 사용하며, 일부 값만 보내면 HTTP `400`으로 처리됩니다.
 
 성공 응답의 `status`는 최초 `PENDING`입니다.
 
@@ -150,6 +158,7 @@ GET https://laylow.me/api/integration/charge-requests?domainId={domainId}&page=1
 | --- | --- |
 | Mancoin 호출 실패 | 오류를 표시하고 마스터 어드민은 호출하지 않음 |
 | Mancoin 성공, 마스터 등록 실패 | 같은 `externalId`로 마스터 등록만 재시도 |
+| Mancoin 계좌정보 일부 누락 | 세 계좌값을 모두 채워 마스터 등록 재요청 |
 | 마스터 등록 성공 | 구매내역에 `PENDING`으로 표시 |
 | 같은 `externalId` 재전송 | 새 내역을 만들지 않고 기존 신청 결과 사용 |
 
