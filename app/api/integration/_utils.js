@@ -10,11 +10,12 @@ export function getDomainPayload(partner) {
   };
 }
 
-export async function forwardIntegrationRequest(endpoint, payload) {
+export async function forwardIntegrationRequest(endpoint, payload, authorization) {
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(authorization ? { Authorization: authorization } : {}),
       ...(INTEGRATION_API_KEY ? { "X-API-Key": INTEGRATION_API_KEY } : {})
     },
     body: JSON.stringify(payload)
@@ -27,7 +28,7 @@ export async function forwardIntegrationRequest(endpoint, payload) {
   };
 }
 
-export async function forwardIntegrationQuery(endpoint, searchParams) {
+export async function forwardIntegrationQuery(endpoint, searchParams, authorization) {
   const url = new URL(endpoint);
 
   for (const [key, value] of searchParams.entries()) {
@@ -39,6 +40,7 @@ export async function forwardIntegrationQuery(endpoint, searchParams) {
   const response = await fetch(url, {
     method: "GET",
     headers: {
+      ...(authorization ? { Authorization: authorization } : {}),
       ...(INTEGRATION_API_KEY ? { "X-API-Key": INTEGRATION_API_KEY } : {})
     }
   });

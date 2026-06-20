@@ -47,7 +47,8 @@ export async function POST(request) {
     amount: payload.amount
   });
 
-  const { response, result } = await forwardIntegrationRequest(DOMAIN_EXCHANGE_API_URL, payload);
+  const authorization = request.headers.get("authorization");
+  const { response, result } = await forwardIntegrationRequest(DOMAIN_EXCHANGE_API_URL, payload, authorization);
 
   if (!response.ok || !result?.ok) {
     const message =
@@ -75,7 +76,8 @@ export async function POST(request) {
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const { response, result } = await forwardIntegrationQuery(DOMAIN_EXCHANGE_API_URL, searchParams);
+  const authorization = request.headers.get("authorization");
+  const { response, result } = await forwardIntegrationQuery(DOMAIN_EXCHANGE_API_URL, searchParams, authorization);
 
   if (!response.ok || !result?.ok) {
     return Response.json(

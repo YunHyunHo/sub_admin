@@ -5,7 +5,8 @@ const DOMAIN_SETTLEMENT_API_URL =
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const { response, result } = await forwardIntegrationQuery(DOMAIN_SETTLEMENT_API_URL, searchParams);
+  const authorization = request.headers.get("authorization");
+  const { response, result } = await forwardIntegrationQuery(DOMAIN_SETTLEMENT_API_URL, searchParams, authorization);
 
   if (!response.ok || !result?.ok) {
     return Response.json(

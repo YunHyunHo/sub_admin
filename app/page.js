@@ -149,8 +149,10 @@ function appendDomainParams(params, partner) {
   }
 }
 
-async function getJson(url) {
-  const response = await fetch(url);
+async function getJson(url, token) {
+  const response = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
   const result = await response.json().catch(() => null);
 
   if (!response.ok || !result?.ok) {
@@ -165,11 +167,12 @@ function createExternalId(type, userId) {
   return `domain-${safeUserId}-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function postJson(url, payload) {
+async function postJson(url, payload, token) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
     body: JSON.stringify(payload)
   });
@@ -540,11 +543,11 @@ export default function Home() {
         monthlyExchangeParams.set("to", monthRange.to);
 
         const [charges, exchanges, monthlyExchanges, settlements, monthlySettlements] = await Promise.all([
-          getJson(`/api/integration/charge-requests?${baseParams.toString()}`),
-          getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`),
-          getJson(`/api/integration/domain-exchanges?${monthlyExchangeParams.toString()}`),
-          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`),
-          getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`)
+          getJson(`/api/integration/charge-requests?${baseParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-exchanges?${monthlyExchangeParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`, session?.token)
         ]);
 
         const exchangeItems = exchanges.items ?? [];
@@ -566,7 +569,7 @@ export default function Home() {
     }
 
     loadHistoryData();
-  }, [loggedIn, partner, historyRefreshKey]);
+  }, [loggedIn, partner, session?.token, historyRefreshKey]);
 
   useEffect(() => {
     if (!loggedIn || !partner) {
@@ -615,7 +618,7 @@ export default function Home() {
         userId: chargeUserId || sessionUserId,
         depositorName: chargeDepositor,
         amount
-      });
+      }, session?.token);
       setChargeStatus({
         type: "success",
         message: result.message ?? "충전신청이 관리자에 전송되었습니다."
@@ -662,7 +665,7 @@ export default function Home() {
         bankName: withdrawBank,
         accountHolder: withdrawAccountHolder,
         accountNumber: withdrawAccountNumber
-      });
+      }, session?.token);
       setWithdrawStatus({
         type: "success",
         message: result.message ?? "환전신청이 관리자에 전송되었습니다."
