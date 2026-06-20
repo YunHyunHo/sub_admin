@@ -153,6 +153,8 @@ button {
   --line: #d8dee5;
   --muted: #66717d;
   --text: #15191e;
+  --accent-2: #2563d9;
+  --danger: #c93636;
   --shadow: 0 20px 55px rgba(45, 55, 72, 0.12);
 }
 
@@ -508,8 +510,12 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.statusCell {
+.statusCell.approved {
   color: var(--accent-2);
+}
+
+.statusCell.rejected {
+  color: var(--danger);
 }
 
 .highlightCell {

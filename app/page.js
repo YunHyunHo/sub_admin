@@ -1235,7 +1235,8 @@ function DataTable({ columns, rows, highlightColumns = [], variant = "" }) {
               {row.map((cell, cellIndex) => (
                 <td
                   className={[
-                    cell === "승인" ? "statusCell" : "",
+                    cell === "승인" ? "statusCell approved" : "",
+                    cell === "거절" ? "statusCell rejected" : "",
                     highlightColumns.includes(cellIndex) ? "highlightCell" : ""
                   ].filter(Boolean).join(" ")}
                   key={`${cell}-${cellIndex}`}
