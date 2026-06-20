@@ -143,6 +143,7 @@ button {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   background: var(--bg);
+  color: var(--text);
 }
 
 .shell.light {
