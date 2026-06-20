@@ -89,6 +89,14 @@ function formatWonText(value) {
   return `${formatWon(parseWon(value))} 원`;
 }
 
+function normalizePagination(pagination, fallbackPage) {
+  return {
+    page: Math.max(1, Number(pagination?.page) || fallbackPage),
+    pageSize: Math.max(1, Number(pagination?.pageSize) || 10),
+    total: Math.max(0, Number(pagination?.total) || 0)
+  };
+}
+
 function formatMonthDayTime(value) {
   const text = String(value ?? "").trim();
   const matched = text.match(/^(?:\d{2}|\d{4})-(\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
@@ -203,6 +211,10 @@ export default function Home() {
   const [chargeSubmitting, setChargeSubmitting] = useState(false);
   const [chargeRequests, setChargeRequests] = useState([]);
   const [domainExchangeRequests, setDomainExchangeRequests] = useState([]);
+  const [chargePage, setChargePage] = useState(1);
+  const [exchangePage, setExchangePage] = useState(1);
+  const [chargePagination, setChargePagination] = useState({ page: 1, pageSize: 10, total: 0 });
+  const [exchangePagination, setExchangePagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [monthlySettlementTotal, setMonthlySettlementTotal] = useState(null);
@@ -517,7 +529,6 @@ export default function Home() {
       const range = getDefaultDateRange();
       const monthRange = getCurrentMonthDateRange();
       const baseParams = new URLSearchParams({
-        page: "1",
         pageSize: "10",
         from: range.from,
         to: range.to
@@ -531,20 +542,24 @@ export default function Home() {
 
       try {
         setHistoryError("");
+        const chargeParams = new URLSearchParams(baseParams);
+        chargeParams.set("page", String(chargePage));
+        const exchangeParams = new URLSearchParams(baseParams);
+        exchangeParams.set("page", String(exchangePage));
         const settlementParams = new URLSearchParams(baseParams);
-        settlementParams.delete("page");
         settlementParams.delete("pageSize");
         const monthlySettlementParams = new URLSearchParams(settlementParams);
         monthlySettlementParams.set("from", monthRange.from);
         monthlySettlementParams.set("to", monthRange.to);
         const monthlyExchangeParams = new URLSearchParams(baseParams);
+        monthlyExchangeParams.set("page", "1");
         monthlyExchangeParams.set("pageSize", "100");
         monthlyExchangeParams.set("from", monthRange.from);
         monthlyExchangeParams.set("to", monthRange.to);
 
         const [charges, exchanges, monthlyExchanges, settlements, monthlySettlements] = await Promise.all([
-          getJson(`/api/integration/charge-requests?${baseParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-exchanges?${baseParams.toString()}`, session?.token),
+          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-exchanges?${monthlyExchangeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`, session?.token)
@@ -552,8 +567,27 @@ export default function Home() {
 
         const exchangeItems = exchanges.items ?? [];
 
+        const nextChargePagination = normalizePagination(charges.pagination, chargePage);
+        const nextExchangePagination = normalizePagination(exchanges.pagination, exchangePage);
+        const chargeTotalPages = Math.max(
+          1,
+          Math.ceil(nextChargePagination.total / nextChargePagination.pageSize)
+        );
+        const exchangeTotalPages = Math.max(
+          1,
+          Math.ceil(nextExchangePagination.total / nextExchangePagination.pageSize)
+        );
+
         setChargeRequests(charges.items ?? []);
+        setChargePagination(nextChargePagination);
         setDomainExchangeRequests(exchangeItems);
+        setExchangePagination(nextExchangePagination);
+        if (chargePage > chargeTotalPages) {
+          setChargePage(chargeTotalPages);
+        }
+        if (exchangePage > exchangeTotalPages) {
+          setExchangePage(exchangeTotalPages);
+        }
         notifyExchangeStatusChanges(exchangeItems);
         setPendingExchangeAmount(
           (monthlyExchanges.items ?? [])
@@ -569,7 +603,7 @@ export default function Home() {
     }
 
     loadHistoryData();
-  }, [loggedIn, partner, session?.token, historyRefreshKey]);
+  }, [loggedIn, partner, session?.token, chargePage, exchangePage, historyRefreshKey]);
 
   useEffect(() => {
     if (!loggedIn || !partner) {
@@ -626,6 +660,7 @@ export default function Home() {
       setChargeUserId("");
       setChargeDepositor("");
       setChargeAmount("");
+      setChargePage(1);
       setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
       setChargeStatus({
@@ -688,6 +723,8 @@ export default function Home() {
       setWithdrawBank("");
       setWithdrawAccountHolder("");
       setWithdrawAccountNumber("");
+      setExchangePage(1);
+      setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
       setWithdrawStatus({
         type: "error",
@@ -779,14 +816,25 @@ export default function Home() {
           <WithdrawPage
             amount={withdrawAmount}
             availableAmount={availableWithdrawAmount}
+            page={exchangePage}
+            pagination={exchangePagination}
             rows={domainExchangeRequests}
             status={withdrawStatus}
             setAmount={setWithdrawAmount}
+            setPage={setExchangePage}
             withdrawAccount={withdrawAccount}
             onSubmit={handleWithdrawSubmit}
           />
         )}
-        {active === "orders" && <OrdersPage error={historyError} rows={chargeRequests} />}
+        {active === "orders" && (
+          <OrdersPage
+            error={historyError}
+            page={chargePage}
+            pagination={chargePagination}
+            rows={chargeRequests}
+            setPage={setChargePage}
+          />
+        )}
         {active === "settlement" && (
           <SettlementPage error={historyError} rows={settlementRows} total={settlementTotal} />
         )}
@@ -970,9 +1018,12 @@ function ChargePage({
 function WithdrawPage({
   amount,
   availableAmount,
+  page,
+  pagination,
   rows,
   status,
   setAmount,
+  setPage,
   withdrawAccount,
   onSubmit
 }) {
@@ -1042,7 +1093,7 @@ function WithdrawPage({
           formatStatus(row.status)
         ])}
       />
-      <Pagination />
+      <Pagination onPageChange={setPage} page={page} pagination={pagination} />
     </PageFrame>
   );
 }
@@ -1055,7 +1106,7 @@ function FormNotice({ status }) {
   return <p className={`formNotice ${status.type}`}>{status.message}</p>;
 }
 
-function OrdersPage({ error, rows }) {
+function OrdersPage({ error, page, pagination, rows, setPage }) {
   return (
     <PageFrame title="구매내역">
       <div className="toolbar">
@@ -1093,7 +1144,7 @@ function OrdersPage({ error, rows }) {
         ])}
         variant="orders"
       />
-      <Pagination />
+      <Pagination onPageChange={setPage} page={page} pagination={pagination} />
     </PageFrame>
   );
 }
@@ -1201,14 +1252,45 @@ function DataTable({ columns, rows, highlightColumns = [], variant = "" }) {
   );
 }
 
-function Pagination() {
+function Pagination({ onPageChange, page, pagination }) {
+  const pageSize = Math.max(1, Number(pagination?.pageSize) || 10);
+  const total = Math.max(0, Number(pagination?.total) || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  const firstVisiblePage = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+  const visiblePages = Array.from(
+    { length: Math.min(5, totalPages) },
+    (_, index) => firstVisiblePage + index
+  );
+
+  function moveTo(nextPage) {
+    const safePage = Math.min(Math.max(1, nextPage), totalPages);
+
+    if (safePage !== currentPage) {
+      onPageChange(safePage);
+    }
+  }
+
   return (
     <div className="pagination">
-      <button type="button"><ChevronsLeft size={16} /></button>
-      <button type="button">‹</button>
-      <button className="active" type="button">1</button>
-      <button type="button">›</button>
-      <button type="button"><ChevronsRight size={16} /></button>
+      <button aria-label="첫 페이지" disabled={currentPage === 1} onClick={() => moveTo(1)} title="첫 페이지" type="button">
+        <ChevronsLeft size={16} />
+      </button>
+      <button aria-label="이전 페이지" disabled={currentPage === 1} onClick={() => moveTo(currentPage - 1)} title="이전 페이지" type="button">‹</button>
+      {visiblePages.map((pageNumber) => (
+        <button
+          className={pageNumber === currentPage ? "active" : ""}
+          key={pageNumber}
+          onClick={() => moveTo(pageNumber)}
+          type="button"
+        >
+          {pageNumber}
+        </button>
+      ))}
+      <button aria-label="다음 페이지" disabled={currentPage === totalPages} onClick={() => moveTo(currentPage + 1)} title="다음 페이지" type="button">›</button>
+      <button aria-label="마지막 페이지" disabled={currentPage === totalPages} onClick={() => moveTo(totalPages)} title="마지막 페이지" type="button">
+        <ChevronsRight size={16} />
+      </button>
     </div>
   );
 }
