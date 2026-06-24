@@ -356,7 +356,8 @@ export default function Home() {
       return;
     }
 
-    const eventsUrl = `https://laylow.me/api/integration/domain-exchanges/events?domainId=${encodeURIComponent(partner.domainId)}`;
+    const connectionStartedAt = Date.now() - 5000;
+    const eventsUrl = `https://laylow.me/api/integration/domain-exchanges/events?domainId=${encodeURIComponent(partner.domainId)}&since=${connectionStartedAt}`;
     const events = new EventSource(eventsUrl);
 
     function handleApproved(event) {
