@@ -97,6 +97,19 @@ function normalizePagination(pagination, fallbackPage) {
   };
 }
 
+function getRowsSignature(rows, pagination) {
+  return JSON.stringify({
+    rows: (rows ?? []).map((row) => [
+      row?.id,
+      row?.status,
+      row?.amount,
+      row?.completedAt,
+      row?.changedAt
+    ]),
+    total: Number(pagination?.total) || 0
+  });
+}
+
 function formatMonthDayTime(value) {
   const text = String(value ?? "").trim();
   const matched = text.match(/^(?:\d{2}|\d{4})-(\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
@@ -157,17 +170,35 @@ function appendDomainParams(params, partner) {
   }
 }
 
-async function getJson(url, token) {
-  const response = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
-  const result = await response.json().catch(() => null);
+const inFlightGetRequests = new Map();
 
-  if (!response.ok || !result?.ok) {
-    throw new Error(result?.message ?? "데이터 조회에 실패했습니다.");
+function getJson(url, token) {
+  const requestKey = `${token ?? ""}:${url}`;
+
+  if (inFlightGetRequests.has(requestKey)) {
+    return inFlightGetRequests.get(requestKey);
   }
 
-  return result;
+  const request = fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+    .then(async (response) => {
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.message ?? "데이터 조회에 실패했습니다.");
+      }
+
+      return result;
+    })
+    .finally(() => {
+      if (inFlightGetRequests.get(requestKey) === request) {
+        inFlightGetRequests.delete(requestKey);
+      }
+    });
+
+  inFlightGetRequests.set(requestKey, request);
+  return request;
 }
 
 function createExternalId(type, userId) {
@@ -219,9 +250,13 @@ export default function Home() {
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [monthlySettlementTotal, setMonthlySettlementTotal] = useState(null);
   const [pendingExchangeAmount, setPendingExchangeAmount] = useState(0);
-  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
+  const historyReadyRef = useRef(false);
+  const chargeSignatureRef = useRef("");
+  const exchangeSignatureRef = useRef("");
+  const sseConnectedRef = useRef(false);
+  const historyPollGenerationRef = useRef(0);
   const exchangeStatusRef = useRef(new Map());
   const exchangeStatusReadyRef = useRef(false);
   const approvedExchangeNotificationRef = useRef(new Set());
@@ -251,6 +286,112 @@ export default function Home() {
     () => Math.max(withdrawBalanceAmount - pendingExchangeAmount, 0),
     [pendingExchangeAmount, withdrawBalanceAmount]
   );
+
+  const refreshSettlementData = useCallback(async () => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    const range = getDefaultDateRange();
+    const monthRange = getCurrentMonthDateRange();
+    const settlementParams = new URLSearchParams({ from: range.from, to: range.to });
+    appendDomainParams(settlementParams, partner);
+
+    if (!settlementParams.has("domainId") && !settlementParams.has("domainName")) {
+      return;
+    }
+
+    const monthlySettlementParams = new URLSearchParams(settlementParams);
+    monthlySettlementParams.set("from", monthRange.from);
+    monthlySettlementParams.set("to", monthRange.to);
+
+    try {
+      const [settlements, monthlySettlements] = await Promise.all([
+        getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
+        getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`, session?.token)
+      ]);
+
+      setSettlementRows(settlements.items ?? []);
+      setSettlementTotal(settlements.total ?? null);
+      setMonthlySettlementTotal(monthlySettlements.total ?? null);
+      setHistoryError("");
+    } catch (error) {
+      setHistoryError(error.message);
+    }
+  }, [
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    session?.token
+  ]);
+
+  const loadChargePage = useCallback(async (page) => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    const range = getDefaultDateRange();
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: "10",
+      from: range.from,
+      to: range.to
+    });
+    appendDomainParams(params, partner);
+
+    const charges = await getJson(
+      `/api/integration/charge-requests?${params.toString()}`,
+      session?.token
+    );
+    const pagination = normalizePagination(charges.pagination, page);
+    const rows = charges.items ?? [];
+
+    chargeSignatureRef.current = getRowsSignature(rows, pagination);
+    setChargeRequests(rows);
+    setChargePagination(pagination);
+    setHistoryError("");
+  }, [
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    session?.token
+  ]);
+
+  const loadExchangePage = useCallback(async (page) => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    const range = getDefaultDateRange();
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: "10",
+      from: range.from,
+      to: range.to
+    });
+    appendDomainParams(params, partner);
+
+    const exchanges = await getJson(
+      `/api/integration/domain-exchanges?${params.toString()}`,
+      session?.token
+    );
+    const pagination = normalizePagination(exchanges.pagination, page);
+    const rows = exchanges.items ?? [];
+
+    exchangeSignatureRef.current = getRowsSignature(rows, pagination);
+    setDomainExchangeRequests(rows);
+    setExchangePagination(pagination);
+    notifyExchangeStatusChanges(rows);
+    setHistoryError("");
+  }, [
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    session?.token
+  ]);
 
   const logout = useCallback(() => {
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -346,6 +487,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    historyReadyRef.current = false;
+    chargeSignatureRef.current = "";
+    exchangeSignatureRef.current = "";
+    sseConnectedRef.current = false;
     exchangeStatusRef.current = new Map();
     exchangeStatusReadyRef.current = false;
     approvedExchangeNotificationRef.current = new Set();
@@ -356,13 +501,25 @@ export default function Home() {
       return;
     }
 
-    const connectionStartedAt = Date.now() - 5000;
+    const connectionStartedAt = Date.now();
     const eventsUrl = `https://laylow.me/api/integration/domain-exchanges/events?domainId=${encodeURIComponent(partner.domainId)}&since=${connectionStartedAt}`;
     const events = new EventSource(eventsUrl);
+
+    function handleOpen() {
+      sseConnectedRef.current = true;
+    }
+
+    function handleError() {
+      sseConnectedRef.current = false;
+    }
 
     function handleApproved(event) {
       try {
         const data = JSON.parse(event.data);
+
+        if (!data?.id || data.status !== "APPROVED") {
+          return;
+        }
 
         notifyApprovedExchange({
           id: data.id,
@@ -371,23 +528,32 @@ export default function Home() {
           status: data.status ?? "APPROVED",
           completedAt: data.approvedAt
         });
-        setHistoryRefreshKey((current) => current + 1);
-      } catch {
-        notifyApprovedExchange({
-          id: `sse-${Date.now()}`,
-          amount: 0,
-          status: "APPROVED"
+        setDomainExchangeRequests((current) => {
+          return current.map((row) => (
+            row?.id === data.id
+              ? { ...row, status: "APPROVED", completedAt: data.approvedAt }
+              : row
+          ));
         });
+        setPendingExchangeAmount((current) => Math.max(current - parseWon(data.amount), 0));
+        void refreshSettlementData();
+      } catch {
+        // Ignore malformed events. Polling fallback will reconcile server state.
       }
     }
 
+    events.addEventListener("open", handleOpen);
+    events.addEventListener("error", handleError);
     events.addEventListener("domain-exchange-approved", handleApproved);
 
     return () => {
+      sseConnectedRef.current = false;
+      events.removeEventListener("open", handleOpen);
+      events.removeEventListener("error", handleError);
       events.removeEventListener("domain-exchange-approved", handleApproved);
       events.close();
     };
-  }, [loggedIn, partner?.domainId]);
+  }, [loggedIn, partner?.domainId, refreshSettlementData]);
 
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -526,7 +692,10 @@ export default function Home() {
       return;
     }
 
-    async function loadHistoryData() {
+    let cancelled = false;
+    let retryTimer = null;
+
+    async function loadInitialHistoryData() {
       const range = getDefaultDateRange();
       const monthRange = getCurrentMonthDateRange();
       const baseParams = new URLSearchParams({
@@ -579,7 +748,12 @@ export default function Home() {
           Math.ceil(nextExchangePagination.total / nextExchangePagination.pageSize)
         );
 
-        setChargeRequests(charges.items ?? []);
+        if (cancelled) {
+          return;
+        }
+
+        const chargeItems = charges.items ?? [];
+        setChargeRequests(chargeItems);
         setChargePagination(nextChargePagination);
         setDomainExchangeRequests(exchangeItems);
         setExchangePagination(nextExchangePagination);
@@ -589,6 +763,8 @@ export default function Home() {
         if (exchangePage > exchangeTotalPages) {
           setExchangePage(exchangeTotalPages);
         }
+        chargeSignatureRef.current = getRowsSignature(chargeItems, nextChargePagination);
+        exchangeSignatureRef.current = getRowsSignature(exchangeItems, nextExchangePagination);
         notifyExchangeStatusChanges(exchangeItems);
         setPendingExchangeAmount(
           (monthlyExchanges.items ?? [])
@@ -598,25 +774,174 @@ export default function Home() {
         setSettlementRows(settlements.items ?? []);
         setSettlementTotal(settlements.total ?? null);
         setMonthlySettlementTotal(monthlySettlements.total ?? null);
+        historyReadyRef.current = true;
       } catch (error) {
-        setHistoryError(error.message);
+        if (!cancelled) {
+          setHistoryError(error.message);
+          retryTimer = window.setTimeout(loadInitialHistoryData, HISTORY_REFRESH_INTERVAL_MS);
+        }
       }
     }
 
-    loadHistoryData();
-  }, [loggedIn, partner, session?.token, chargePage, exchangePage, historyRefreshKey]);
+    loadInitialHistoryData();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    session?.token
+  ]);
+
+  useEffect(() => {
+    if (!loggedIn || !partner || !historyReadyRef.current) {
+      return;
+    }
+
+    loadChargePage(chargePage).catch((error) => setHistoryError(error.message));
+  }, [chargePage, loadChargePage, loggedIn, partner?.domainId, partner?.domain]);
+
+  useEffect(() => {
+    if (!loggedIn || !partner || !historyReadyRef.current) {
+      return;
+    }
+
+    loadExchangePage(exchangePage).catch((error) => setHistoryError(error.message));
+  }, [exchangePage, loadExchangePage, loggedIn, partner?.domainId, partner?.domain]);
 
   useEffect(() => {
     if (!loggedIn || !partner) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      setHistoryRefreshKey((current) => current + 1);
-    }, HISTORY_REFRESH_INTERVAL_MS);
+    let stopped = false;
+    let timer = null;
+    const generation = historyPollGenerationRef.current + 1;
+    historyPollGenerationRef.current = generation;
 
-    return () => window.clearInterval(timer);
-  }, [loggedIn, partner]);
+    async function pollChangedHistory() {
+      if (stopped || generation !== historyPollGenerationRef.current) {
+        return;
+      }
+
+      try {
+        const range = getDefaultDateRange();
+        const chargeParams = new URLSearchParams({
+          page: String(chargePage),
+          pageSize: "10",
+          from: range.from,
+          to: range.to
+        });
+        appendDomainParams(chargeParams, partner);
+
+        const requests = [
+          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token)
+        ];
+
+        if (!sseConnectedRef.current) {
+          const exchangeParams = new URLSearchParams(chargeParams);
+          exchangeParams.set("page", String(exchangePage));
+          requests.push(
+            getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
+          );
+        }
+
+        const [charges, exchanges] = await Promise.all(requests);
+
+        if (stopped || generation !== historyPollGenerationRef.current) {
+          return;
+        }
+
+        const nextChargePagination = normalizePagination(charges.pagination, chargePage);
+        const nextChargeRows = charges.items ?? [];
+        const nextChargeSignature = getRowsSignature(nextChargeRows, nextChargePagination);
+        let financialDataChanged = false;
+
+        if (nextChargeSignature !== chargeSignatureRef.current) {
+          chargeSignatureRef.current = nextChargeSignature;
+          setChargeRequests(nextChargeRows);
+          setChargePagination(nextChargePagination);
+          financialDataChanged = true;
+        }
+
+        if (exchanges) {
+          const nextExchangePagination = normalizePagination(exchanges.pagination, exchangePage);
+          const nextExchangeRows = exchanges.items ?? [];
+          const nextExchangeSignature = getRowsSignature(nextExchangeRows, nextExchangePagination);
+
+          if (nextExchangeSignature !== exchangeSignatureRef.current) {
+            const previousStatuses = exchangeStatusRef.current;
+            const pendingAmountDelta = nextExchangeRows.reduce((delta, row) => {
+              const previousStatus = previousStatuses.get(row?.id);
+
+              if (previousStatus === "PENDING" && row?.status !== "PENDING") {
+                return delta - parseWon(row?.amount);
+              }
+              if (
+                exchangeStatusReadyRef.current &&
+                previousStatus !== "PENDING" &&
+                row?.status === "PENDING"
+              ) {
+                return delta + parseWon(row?.amount);
+              }
+
+              return delta;
+            }, 0);
+
+            exchangeSignatureRef.current = nextExchangeSignature;
+            setDomainExchangeRequests(nextExchangeRows);
+            setExchangePagination(nextExchangePagination);
+            notifyExchangeStatusChanges(nextExchangeRows);
+            if (pendingAmountDelta) {
+              setPendingExchangeAmount((current) => Math.max(current + pendingAmountDelta, 0));
+            }
+            financialDataChanged = true;
+          }
+        }
+
+        if (financialDataChanged) {
+          await refreshSettlementData();
+        }
+
+        setHistoryError("");
+      } catch (error) {
+        if (!stopped) {
+          setHistoryError(error.message);
+        }
+      } finally {
+        if (!stopped && generation === historyPollGenerationRef.current) {
+          timer = window.setTimeout(pollChangedHistory, HISTORY_REFRESH_INTERVAL_MS);
+        }
+      }
+    }
+
+    timer = window.setTimeout(pollChangedHistory, HISTORY_REFRESH_INTERVAL_MS);
+
+    return () => {
+      stopped = true;
+      if (historyPollGenerationRef.current === generation) {
+        historyPollGenerationRef.current += 1;
+      }
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [
+    chargePage,
+    exchangePage,
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    refreshSettlementData,
+    session?.token
+  ]);
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
@@ -661,8 +986,11 @@ export default function Home() {
       setChargeUserId("");
       setChargeDepositor("");
       setChargeAmount("");
-      setChargePage(1);
-      setHistoryRefreshKey((current) => current + 1);
+      if (chargePage === 1) {
+        void loadChargePage(1).catch((error) => setHistoryError(error.message));
+      } else {
+        setChargePage(1);
+      }
     } catch (error) {
       setChargeStatus({
         type: "error",
@@ -725,7 +1053,6 @@ export default function Home() {
       setWithdrawAccountHolder("");
       setWithdrawAccountNumber("");
       setExchangePage(1);
-      setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
       setWithdrawStatus({
         type: "error",
