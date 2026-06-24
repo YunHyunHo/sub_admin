@@ -258,8 +258,11 @@ export default function Home() {
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
   const historyPollGenerationRef = useRef(0);
+  const chargeStatusRef = useRef(new Map());
+  const chargeStatusReadyRef = useRef(false);
   const exchangeStatusRef = useRef(new Map());
   const exchangeStatusReadyRef = useRef(false);
+  const approvedChargeNotificationRef = useRef(new Set());
   const approvedExchangeNotificationRef = useRef(new Set());
   const noticeAudioRef = useRef(null);
   const noticeSoundUnlockedRef = useRef(false);
@@ -352,6 +355,7 @@ export default function Home() {
     chargeSignatureRef.current = getRowsSignature(rows, pagination);
     setChargeRequests(rows);
     setChargePagination(pagination);
+    notifyChargeStatusChanges(rows);
     setHistoryError("");
   }, [
     loggedIn,
@@ -471,6 +475,44 @@ export default function Home() {
     playExchangeApprovalSound();
   }
 
+  function notifyApprovedCharge(row) {
+    if (!row?.id || approvedChargeNotificationRef.current.has(row.id)) {
+      return;
+    }
+
+    approvedChargeNotificationRef.current.add(row.id);
+    chargeStatusRef.current.set(row.id, "APPROVED");
+    playNoticeSound();
+  }
+
+  function notifyChargeStatusChanges(rows) {
+    const previousStatuses = chargeStatusRef.current;
+    const nextStatuses = new Map(previousStatuses);
+    const changedRows = [];
+
+    rows.forEach((row) => {
+      if (!row?.id || !row?.status) {
+        return;
+      }
+
+      const previousStatus = previousStatuses.get(row.id);
+
+      if (
+        chargeStatusReadyRef.current &&
+        previousStatus === "PENDING" &&
+        row.status === "APPROVED"
+      ) {
+        changedRows.push(row);
+      }
+
+      nextStatuses.set(row.id, row.status);
+    });
+
+    chargeStatusRef.current = nextStatuses;
+    chargeStatusReadyRef.current = true;
+    changedRows.forEach(notifyApprovedCharge);
+  }
+
   function notifyExchangeStatusChanges(rows) {
     const previousStatuses = exchangeStatusRef.current;
     const nextStatuses = new Map();
@@ -511,8 +553,11 @@ export default function Home() {
     chargeSignatureRef.current = "";
     exchangeSignatureRef.current = "";
     sseConnectedRef.current = false;
+    chargeStatusRef.current = new Map();
+    chargeStatusReadyRef.current = false;
     exchangeStatusRef.current = new Map();
     exchangeStatusReadyRef.current = false;
+    approvedChargeNotificationRef.current = new Set();
     approvedExchangeNotificationRef.current = new Set();
   }, [loggedIn, partner?.domainId, partner?.domain]);
 
@@ -797,6 +842,7 @@ export default function Home() {
         }
         chargeSignatureRef.current = getRowsSignature(chargeItems, nextChargePagination);
         exchangeSignatureRef.current = getRowsSignature(exchangeItems, nextExchangePagination);
+        notifyChargeStatusChanges(chargeItems);
         notifyExchangeStatusChanges(exchangeItems);
         setPendingExchangeAmount(
           (monthlyExchanges.items ?? [])
@@ -894,6 +940,7 @@ export default function Home() {
           chargeSignatureRef.current = nextChargeSignature;
           setChargeRequests(nextChargeRows);
           setChargePagination(nextChargePagination);
+          notifyChargeStatusChanges(nextChargeRows);
           financialDataChanged = true;
         }
 
