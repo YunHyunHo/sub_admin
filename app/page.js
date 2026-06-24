@@ -149,15 +149,32 @@ function getDefaultDateRange() {
   };
 }
 
-function getCurrentMonthDateRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+function getKoreaTodayDateRange() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Seoul"
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 
   return {
-    from: formatLocalDate(from),
-    to: formatLocalDate(to)
+    from: today,
+    to: today
   };
+}
+
+function getMillisecondsUntilNextKoreaMidnight() {
+  const now = Date.now();
+  const koreaNow = new Date(now + 9 * 60 * 60 * 1000);
+  const nextMidnight = Date.UTC(
+    koreaNow.getUTCFullYear(),
+    koreaNow.getUTCMonth(),
+    koreaNow.getUTCDate() + 1
+  ) - 9 * 60 * 60 * 1000;
+
+  return Math.max(nextMidnight - now + 1000, 1000);
 }
 
 function appendDomainParams(params, partner) {
@@ -247,7 +264,7 @@ export default function Home() {
   const [exchangePagination, setExchangePagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
-  const [monthlySettlementTotal, setMonthlySettlementTotal] = useState(null);
+  const [dailySettlementTotal, setDailySettlementTotal] = useState(null);
   const [pendingExchangeAmount, setPendingExchangeAmount] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
@@ -270,20 +287,20 @@ export default function Home() {
   const sessionUserId = session?.user?.loginId ?? "";
   const withdrawBalanceAmount = useMemo(
     () => {
-      if (monthlySettlementTotal?.balanceAmount != null) {
-        return parseWon(monthlySettlementTotal.balanceAmount);
+      if (dailySettlementTotal?.balanceAmount != null) {
+        return parseWon(dailySettlementTotal.balanceAmount);
       }
 
-      if (monthlySettlementTotal?.netChargeAmount != null) {
-        return parseWon(monthlySettlementTotal.netChargeAmount);
+      if (dailySettlementTotal?.netChargeAmount != null) {
+        return parseWon(dailySettlementTotal.netChargeAmount);
       }
 
-      const chargeAmount = parseWon(monthlySettlementTotal?.chargeAmount);
-      const feeAmount = parseWon(monthlySettlementTotal?.feeAmount);
+      const chargeAmount = parseWon(dailySettlementTotal?.chargeAmount);
+      const feeAmount = parseWon(dailySettlementTotal?.feeAmount);
 
       return Math.max(chargeAmount - feeAmount, 0);
     },
-    [monthlySettlementTotal]
+    [dailySettlementTotal]
   );
   const availableWithdrawAmount = useMemo(
     () => Math.max(withdrawBalanceAmount - pendingExchangeAmount, 0),
@@ -296,7 +313,7 @@ export default function Home() {
     }
 
     const range = getDefaultDateRange();
-    const monthRange = getCurrentMonthDateRange();
+    const todayRange = getKoreaTodayDateRange();
     const settlementParams = new URLSearchParams({ from: range.from, to: range.to });
     appendDomainParams(settlementParams, partner);
 
@@ -304,19 +321,19 @@ export default function Home() {
       return;
     }
 
-    const monthlySettlementParams = new URLSearchParams(settlementParams);
-    monthlySettlementParams.set("from", monthRange.from);
-    monthlySettlementParams.set("to", monthRange.to);
+    const dailySettlementParams = new URLSearchParams(settlementParams);
+    dailySettlementParams.set("from", todayRange.from);
+    dailySettlementParams.set("to", todayRange.to);
 
     try {
-      const [settlements, monthlySettlements] = await Promise.all([
+      const [settlements, dailySettlements] = await Promise.all([
         getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
-        getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`, session?.token)
+        getJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`, session?.token)
       ]);
 
       setSettlementRows(settlements.items ?? []);
       setSettlementTotal(settlements.total ?? null);
-      setMonthlySettlementTotal(monthlySettlements.total ?? null);
+      setDailySettlementTotal(dailySettlements.total ?? null);
       setHistoryError("");
     } catch (error) {
       setHistoryError(error.message);
@@ -328,6 +345,35 @@ export default function Home() {
     partner?.name,
     session?.token
   ]);
+
+  useEffect(() => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    let stopped = false;
+    let timer = null;
+
+    function scheduleMidnightRefresh() {
+      timer = window.setTimeout(async () => {
+        if (stopped) {
+          return;
+        }
+
+        await refreshSettlementData();
+        scheduleMidnightRefresh();
+      }, getMillisecondsUntilNextKoreaMidnight());
+    }
+
+    scheduleMidnightRefresh();
+
+    return () => {
+      stopped = true;
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [loggedIn, partner, refreshSettlementData]);
 
   const loadChargePage = useCallback(async (page) => {
     if (!loggedIn || !partner) {
@@ -702,19 +748,19 @@ export default function Home() {
 
   const totals = useMemo(
     () => {
-      const chargeAmount = parseWon(monthlySettlementTotal?.chargeAmount);
-      const feeAmount = parseWon(monthlySettlementTotal?.feeAmount);
-      const monthlyExchangeAmount = parseWon(monthlySettlementTotal?.exchangeAmount);
+      const chargeAmount = parseWon(dailySettlementTotal?.chargeAmount);
+      const feeAmount = parseWon(dailySettlementTotal?.feeAmount);
+      const dailyExchangeAmount = parseWon(dailySettlementTotal?.exchangeAmount);
 
       return [
         ["입금", formatWon(chargeAmount)],
         ["수수료", formatWon(feeAmount)],
-        ["환전", formatWon(monthlyExchangeAmount)],
+        ["환전", formatWon(dailyExchangeAmount)],
         ["잔고", formatWon(availableWithdrawAmount)],
-        ["환전액", formatWon(monthlyExchangeAmount)]
+        ["환전액", formatWon(dailyExchangeAmount)]
       ];
     },
-    [availableWithdrawAmount, monthlySettlementTotal]
+    [availableWithdrawAmount, dailySettlementTotal]
   );
 
   const waitingSummary = useMemo(
@@ -735,7 +781,7 @@ export default function Home() {
 
     async function loadInitialHistoryData() {
       const range = getDefaultDateRange();
-      const monthRange = getCurrentMonthDateRange();
+      const todayRange = getKoreaTodayDateRange();
       const baseParams = new URLSearchParams({
         pageSize: "10",
         from: range.from,
@@ -756,21 +802,22 @@ export default function Home() {
         exchangeParams.set("page", String(exchangePage));
         const settlementParams = new URLSearchParams(baseParams);
         settlementParams.delete("pageSize");
-        const monthlySettlementParams = new URLSearchParams(settlementParams);
-        monthlySettlementParams.set("from", monthRange.from);
-        monthlySettlementParams.set("to", monthRange.to);
-        const monthlyExchangeParams = new URLSearchParams(baseParams);
-        monthlyExchangeParams.set("page", "1");
-        monthlyExchangeParams.set("pageSize", "100");
-        monthlyExchangeParams.set("from", monthRange.from);
-        monthlyExchangeParams.set("to", monthRange.to);
+        const dailySettlementParams = new URLSearchParams(settlementParams);
+        dailySettlementParams.set("from", todayRange.from);
+        dailySettlementParams.set("to", todayRange.to);
+        const pendingExchangeParams = new URLSearchParams(baseParams);
+        pendingExchangeParams.set("page", "1");
+        pendingExchangeParams.set("pageSize", "100");
+        pendingExchangeParams.set("status", "PENDING");
+        pendingExchangeParams.delete("from");
+        pendingExchangeParams.delete("to");
 
-        const [charges, exchanges, monthlyExchanges, settlements, monthlySettlements] = await Promise.all([
+        const [charges, exchanges, pendingExchanges, settlements, dailySettlements] = await Promise.all([
           getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-exchanges?${monthlyExchangeParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-exchanges?${pendingExchangeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-settlements?${monthlySettlementParams.toString()}`, session?.token)
+          getJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`, session?.token)
         ]);
 
         const exchangeItems = exchanges.items ?? [];
@@ -806,13 +853,13 @@ export default function Home() {
         notifyChargeStatusChanges(chargeItems);
         notifyExchangeStatusChanges(exchangeItems);
         setPendingExchangeAmount(
-          (monthlyExchanges.items ?? [])
+          (pendingExchanges.items ?? [])
             .filter((row) => row?.status === "PENDING")
             .reduce((sum, row) => sum + parseWon(row?.amount), 0)
         );
         setSettlementRows(settlements.items ?? []);
         setSettlementTotal(settlements.total ?? null);
-        setMonthlySettlementTotal(monthlySettlements.total ?? null);
+        setDailySettlementTotal(dailySettlements.total ?? null);
         historyReadyRef.current = true;
       } catch (error) {
         if (!cancelled) {
