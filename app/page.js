@@ -180,6 +180,7 @@ function getJson(url, token) {
   }
 
   const request = fetch(url, {
+    cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   })
     .then(async (response) => {
@@ -262,6 +263,7 @@ export default function Home() {
   const approvedExchangeNotificationRef = useRef(new Set());
   const noticeAudioRef = useRef(null);
   const noticeSoundUnlockedRef = useRef(false);
+  const noticeRetryTimerRef = useRef(null);
   const partner = session?.partner ?? dashboard?.partner;
   const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
@@ -424,12 +426,30 @@ export default function Home() {
     noticeSoundUnlockedRef.current = Boolean(window.__winpayNoticeSoundUnlocked);
   }
 
-  function playNoticeSound() {
+  function playNoticeSound(attempt = 0) {
     const audio = getNoticeAudio();
 
+    audio.muted = false;
     audio.volume = 1;
     audio.currentTime = 0;
-    audio.play().catch(() => {});
+    audio.play()
+      .then(() => {
+        if (noticeRetryTimerRef.current) {
+          window.clearTimeout(noticeRetryTimerRef.current);
+          noticeRetryTimerRef.current = null;
+        }
+      })
+      .catch(() => {
+        console.warn("[exchange-notice] 알림음 재생 재시도", { attempt: attempt + 1 });
+        if (attempt >= 5) {
+          return;
+        }
+
+        noticeRetryTimerRef.current = window.setTimeout(
+          () => playNoticeSound(attempt + 1),
+          1000
+        );
+      });
   }
 
   function playExchangeApprovalSound() {
@@ -497,6 +517,14 @@ export default function Home() {
   }, [loggedIn, partner?.domainId, partner?.domain]);
 
   useEffect(() => {
+    return () => {
+      if (noticeRetryTimerRef.current) {
+        window.clearTimeout(noticeRetryTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!loggedIn || !partner?.domainId || typeof EventSource === "undefined") {
       return;
     }
@@ -507,10 +535,14 @@ export default function Home() {
 
     function handleOpen() {
       sseConnectedRef.current = true;
+      console.info("[exchange-events] 연결됨", { domainId: partner.domainId });
     }
 
     function handleError() {
       sseConnectedRef.current = false;
+      console.warn("[exchange-events] 연결 끊김, 5초 조회로 보정", {
+        domainId: partner.domainId
+      });
     }
 
     function handleApproved(event) {
@@ -840,17 +872,12 @@ export default function Home() {
         });
         appendDomainParams(chargeParams, partner);
 
+        const exchangeParams = new URLSearchParams(chargeParams);
+        exchangeParams.set("page", String(exchangePage));
         const requests = [
-          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token)
+          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
+          getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
         ];
-
-        if (!sseConnectedRef.current) {
-          const exchangeParams = new URLSearchParams(chargeParams);
-          exchangeParams.set("page", String(exchangePage));
-          requests.push(
-            getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
-          );
-        }
 
         const [charges, exchanges] = await Promise.all(requests);
 
@@ -1062,7 +1089,11 @@ export default function Home() {
   }
 
   return (
-    <main className={dark ? "shell dark" : "shell light"}>
+    <main
+      className={dark ? "shell dark" : "shell light"}
+      onKeyDownCapture={unlockNoticeSound}
+      onPointerDownCapture={unlockNoticeSound}
+    >
       <aside className="sidebar">
         <div className="brandMini">
           <ShieldCheck size={18} />

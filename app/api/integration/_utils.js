@@ -39,6 +39,7 @@ export async function forwardIntegrationQuery(endpoint, searchParams, authorizat
 
   const response = await fetch(url, {
     method: "GET",
+    cache: "no-store",
     headers: {
       ...(authorization ? { Authorization: authorization } : {}),
       ...(INTEGRATION_API_KEY ? { "X-API-Key": INTEGRATION_API_KEY } : {})
