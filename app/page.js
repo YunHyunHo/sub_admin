@@ -675,59 +675,89 @@ export default function Home() {
       return;
     }
 
-    const connectionStartedAt = Date.now();
-    const eventsUrl = `https://laylow.me/api/integration/domain-exchanges/events?domainId=${encodeURIComponent(partner.domainId)}&since=${connectionStartedAt}`;
+    const eventsUrl = `https://laylow.me/api/integration/domain-events?domainId=${encodeURIComponent(partner.domainId)}`;
     const events = new EventSource(eventsUrl);
 
     function handleOpen() {
       sseConnectedRef.current = true;
-      console.info("[exchange-events] 연결됨", { domainId: partner.domainId });
+      console.info("[domain-events] 연결됨", { domainId: partner.domainId });
     }
 
     function handleError() {
       sseConnectedRef.current = false;
-      console.warn("[exchange-events] 연결 끊김, 5초 조회로 보정", {
+      console.warn("[domain-events] 연결 끊김", {
         domainId: partner.domainId
       });
     }
 
-    function handleApproved(event) {
+    function refreshServerState() {
+      return Promise.all([
+        loadChargePage(chargePage),
+        loadExchangePage(exchangePage),
+        refreshPendingSummary(),
+        refreshSettlementData()
+      ]);
+    }
+
+    function handleDomainEvent(event) {
       try {
         const data = JSON.parse(event.data);
 
-        if (!data?.id || data.status !== "APPROVED") {
-          return;
+        if (data?.id && data.status === "APPROVED") {
+          if (data.type === "CHARGE" || event.type === "charge-request-approved") {
+            notifyApprovedCharge({
+              id: data.id,
+              amount: data.amount,
+              status: data.status,
+              changedAt: data.changedAt
+            });
+          }
+
+          if (data.type === "EXCHANGE" || event.type === "domain-exchange-approved") {
+            notifyApprovedExchange({
+              id: data.id,
+              domainId: data.domainId,
+              amount: data.amount,
+              status: data.status,
+              completedAt: data.changedAt ?? data.approvedAt
+            });
+          }
         }
 
-        notifyApprovedExchange({
-          id: data.id,
-          domainId: data.domainId,
-          amount: data.amount,
-          status: data.status ?? "APPROVED",
-          completedAt: data.approvedAt
-        });
-        void Promise.all([
-          loadExchangePage(exchangePage),
-          refreshPendingSummary(),
-          refreshSettlementData()
-        ]);
+        void refreshServerState();
       } catch {
         // Ignore malformed events. The next server-driven refresh will reconcile state.
       }
     }
 
+    const eventNames = [
+      "charge-request-created",
+      "charge-request-approved",
+      "charge-request-rejected",
+      "domain-exchange-created",
+      "domain-exchange-approved",
+      "domain-exchange-rejected",
+      "domain-balance-updated"
+    ];
+
     events.addEventListener("open", handleOpen);
     events.addEventListener("error", handleError);
-    events.addEventListener("domain-exchange-approved", handleApproved);
+    eventNames.forEach((eventName) => {
+      events.addEventListener(eventName, handleDomainEvent);
+    });
 
     return () => {
       sseConnectedRef.current = false;
       events.removeEventListener("open", handleOpen);
       events.removeEventListener("error", handleError);
-      events.removeEventListener("domain-exchange-approved", handleApproved);
+      eventNames.forEach((eventName) => {
+        events.removeEventListener(eventName, handleDomainEvent);
+      });
       events.close();
     };
   }, [
+    chargePage,
+    loadChargePage,
     exchangePage,
     loadExchangePage,
     loggedIn,
