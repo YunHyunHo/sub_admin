@@ -703,23 +703,23 @@ export default function Home() {
       try {
         const data = JSON.parse(event.data);
 
-        if (data?.id && data.status === "APPROVED") {
-          if (data.type === "CHARGE" || event.type === "charge-request-approved") {
+        if (data?.id) {
+          if (event.type === "charge-request-approved") {
             notifyApprovedCharge({
               id: data.id,
               amount: data.amount,
-              status: data.status,
-              changedAt: data.changedAt
+              status: data.status ?? "APPROVED",
+              changedAt: data.updatedAt ?? data.changedAt
             });
           }
 
-          if (data.type === "EXCHANGE" || event.type === "domain-exchange-approved") {
+          if (event.type === "domain-exchange-approved") {
             notifyApprovedExchange({
               id: data.id,
               domainId: data.domainId,
               amount: data.amount,
-              status: data.status,
-              completedAt: data.changedAt ?? data.approvedAt
+              status: data.status ?? "APPROVED",
+              completedAt: data.updatedAt ?? data.changedAt ?? data.approvedAt
             });
           }
         }
