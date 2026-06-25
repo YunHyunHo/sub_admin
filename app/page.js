@@ -306,8 +306,8 @@ export default function Home() {
     [dailySettlementTotal]
   );
   const availableWithdrawAmount = useMemo(
-    () => Math.max(withdrawBalanceAmount - pendingExchangeAmount, 0),
-    [pendingExchangeAmount, withdrawBalanceAmount]
+    () => withdrawBalanceAmount,
+    [withdrawBalanceAmount]
   );
 
   const refreshPendingSummary = useCallback(async (options = {}) => {
