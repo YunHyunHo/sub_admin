@@ -266,13 +266,13 @@ export default function Home() {
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [dailySettlementTotal, setDailySettlementTotal] = useState(null);
   const [pendingExchangeAmount, setPendingExchangeAmount] = useState(0);
+  const [pendingSummary, setPendingSummary] = useState({ charge: 0, withdraw: 0 });
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
   const historyReadyRef = useRef(false);
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
-  const historyPollGenerationRef = useRef(0);
   const chargeStatusRef = useRef(new Map());
   const chargeStatusReadyRef = useRef(false);
   const exchangeStatusRef = useRef(new Map());
@@ -306,6 +306,62 @@ export default function Home() {
     () => Math.max(withdrawBalanceAmount - pendingExchangeAmount, 0),
     [pendingExchangeAmount, withdrawBalanceAmount]
   );
+
+  const refreshPendingSummary = useCallback(async () => {
+    if (!loggedIn || !partner) {
+      return;
+    }
+
+    const baseParams = new URLSearchParams({
+      page: "1",
+      pageSize: "100",
+      status: "PENDING"
+    });
+    appendDomainParams(baseParams, partner);
+
+    if (!baseParams.has("domainId") && !baseParams.has("domainName")) {
+      return;
+    }
+
+    const chargeParams = new URLSearchParams(baseParams);
+    const exchangeParams = new URLSearchParams(baseParams);
+    const [pendingCharges, firstPendingExchanges] = await Promise.all([
+      getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
+      getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
+    ]);
+
+    const exchangePageSize = normalizePagination(firstPendingExchanges.pagination, 1).pageSize;
+    const exchangeTotal = normalizePagination(firstPendingExchanges.pagination, 1).total;
+    let pendingExchangeItems = firstPendingExchanges.items ?? [];
+
+    for (
+      let nextPage = 2;
+      (nextPage - 1) * exchangePageSize < exchangeTotal;
+      nextPage += 1
+    ) {
+      const nextExchangeParams = new URLSearchParams(exchangeParams);
+      nextExchangeParams.set("page", String(nextPage));
+      const nextPendingExchanges = await getJson(
+        `/api/integration/domain-exchanges?${nextExchangeParams.toString()}`,
+        session?.token
+      );
+      pendingExchangeItems = pendingExchangeItems.concat(nextPendingExchanges.items ?? []);
+    }
+
+    setPendingSummary({
+      charge: normalizePagination(pendingCharges.pagination, 1).total,
+      withdraw: exchangeTotal
+    });
+    setPendingExchangeAmount(
+      pendingExchangeItems.reduce((sum, row) => sum + parseWon(row?.amount), 0)
+    );
+  }, [
+    loggedIn,
+    partner?.domainId,
+    partner?.domain,
+    partner?.name,
+    session?.token
+  ]);
 
   const refreshSettlementData = useCallback(async () => {
     if (!loggedIn || !partner) {
@@ -602,6 +658,8 @@ export default function Home() {
     exchangeStatusReadyRef.current = false;
     approvedChargeNotificationRef.current = new Set();
     approvedExchangeNotificationRef.current = new Set();
+    setPendingExchangeAmount(0);
+    setPendingSummary({ charge: 0, withdraw: 0 });
   }, [loggedIn, partner?.domainId, partner?.domain]);
 
   useEffect(() => {
@@ -648,17 +706,13 @@ export default function Home() {
           status: data.status ?? "APPROVED",
           completedAt: data.approvedAt
         });
-        setDomainExchangeRequests((current) => {
-          return current.map((row) => (
-            row?.id === data.id
-              ? { ...row, status: "APPROVED", completedAt: data.approvedAt }
-              : row
-          ));
-        });
-        setPendingExchangeAmount((current) => Math.max(current - parseWon(data.amount), 0));
-        void refreshSettlementData();
+        void Promise.all([
+          loadExchangePage(exchangePage),
+          refreshPendingSummary(),
+          refreshSettlementData()
+        ]);
       } catch {
-        // Ignore malformed events. Polling fallback will reconcile server state.
+        // Ignore malformed events. The next server-driven refresh will reconcile state.
       }
     }
 
@@ -673,7 +727,14 @@ export default function Home() {
       events.removeEventListener("domain-exchange-approved", handleApproved);
       events.close();
     };
-  }, [loggedIn, partner?.domainId, refreshSettlementData]);
+  }, [
+    exchangePage,
+    loadExchangePage,
+    loggedIn,
+    partner?.domainId,
+    refreshPendingSummary,
+    refreshSettlementData
+  ]);
 
   useEffect(() => {
     const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -764,11 +825,8 @@ export default function Home() {
   );
 
   const waitingSummary = useMemo(
-    () => ({
-      charge: chargeRequests.filter((row) => row?.status === "PENDING").length,
-      withdraw: domainExchangeRequests.filter((row) => row?.status === "PENDING").length
-    }),
-    [chargeRequests, domainExchangeRequests]
+    () => pendingSummary,
+    [pendingSummary]
   );
 
   useEffect(() => {
@@ -805,17 +863,9 @@ export default function Home() {
         const dailySettlementParams = new URLSearchParams(settlementParams);
         dailySettlementParams.set("from", todayRange.from);
         dailySettlementParams.set("to", todayRange.to);
-        const pendingExchangeParams = new URLSearchParams(baseParams);
-        pendingExchangeParams.set("page", "1");
-        pendingExchangeParams.set("pageSize", "100");
-        pendingExchangeParams.set("status", "PENDING");
-        pendingExchangeParams.delete("from");
-        pendingExchangeParams.delete("to");
-
-        const [charges, exchanges, pendingExchanges, settlements, dailySettlements] = await Promise.all([
+        const [charges, exchanges, settlements, dailySettlements] = await Promise.all([
           getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-exchanges?${pendingExchangeParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
           getJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`, session?.token)
         ]);
@@ -852,14 +902,10 @@ export default function Home() {
         exchangeSignatureRef.current = getRowsSignature(exchangeItems, nextExchangePagination);
         notifyChargeStatusChanges(chargeItems);
         notifyExchangeStatusChanges(exchangeItems);
-        setPendingExchangeAmount(
-          (pendingExchanges.items ?? [])
-            .filter((row) => row?.status === "PENDING")
-            .reduce((sum, row) => sum + parseWon(row?.amount), 0)
-        );
         setSettlementRows(settlements.items ?? []);
         setSettlementTotal(settlements.total ?? null);
         setDailySettlementTotal(dailySettlements.total ?? null);
+        await refreshPendingSummary();
         historyReadyRef.current = true;
       } catch (error) {
         if (!cancelled) {
@@ -882,6 +928,7 @@ export default function Home() {
     partner?.domainId,
     partner?.domain,
     partner?.name,
+    refreshPendingSummary,
     session?.token
   ]);
 
@@ -900,130 +947,6 @@ export default function Home() {
 
     loadExchangePage(exchangePage).catch((error) => setHistoryError(error.message));
   }, [exchangePage, loadExchangePage, loggedIn, partner?.domainId, partner?.domain]);
-
-  useEffect(() => {
-    if (!loggedIn || !partner) {
-      return;
-    }
-
-    let stopped = false;
-    let timer = null;
-    const generation = historyPollGenerationRef.current + 1;
-    historyPollGenerationRef.current = generation;
-
-    async function pollChangedHistory() {
-      if (stopped || generation !== historyPollGenerationRef.current) {
-        return;
-      }
-
-      try {
-        const range = getDefaultDateRange();
-        const chargeParams = new URLSearchParams({
-          page: String(chargePage),
-          pageSize: "10",
-          from: range.from,
-          to: range.to
-        });
-        appendDomainParams(chargeParams, partner);
-
-        const exchangeParams = new URLSearchParams(chargeParams);
-        exchangeParams.set("page", String(exchangePage));
-        const requests = [
-          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
-        ];
-
-        const [charges, exchanges] = await Promise.all(requests);
-
-        if (stopped || generation !== historyPollGenerationRef.current) {
-          return;
-        }
-
-        const nextChargePagination = normalizePagination(charges.pagination, chargePage);
-        const nextChargeRows = charges.items ?? [];
-        const nextChargeSignature = getRowsSignature(nextChargeRows, nextChargePagination);
-        let financialDataChanged = false;
-
-        if (nextChargeSignature !== chargeSignatureRef.current) {
-          chargeSignatureRef.current = nextChargeSignature;
-          setChargeRequests(nextChargeRows);
-          setChargePagination(nextChargePagination);
-          notifyChargeStatusChanges(nextChargeRows);
-          financialDataChanged = true;
-        }
-
-        if (exchanges) {
-          const nextExchangePagination = normalizePagination(exchanges.pagination, exchangePage);
-          const nextExchangeRows = exchanges.items ?? [];
-          const nextExchangeSignature = getRowsSignature(nextExchangeRows, nextExchangePagination);
-
-          if (nextExchangeSignature !== exchangeSignatureRef.current) {
-            const previousStatuses = exchangeStatusRef.current;
-            const pendingAmountDelta = nextExchangeRows.reduce((delta, row) => {
-              const previousStatus = previousStatuses.get(row?.id);
-
-              if (previousStatus === "PENDING" && row?.status !== "PENDING") {
-                return delta - parseWon(row?.amount);
-              }
-              if (
-                exchangeStatusReadyRef.current &&
-                previousStatus !== "PENDING" &&
-                row?.status === "PENDING"
-              ) {
-                return delta + parseWon(row?.amount);
-              }
-
-              return delta;
-            }, 0);
-
-            exchangeSignatureRef.current = nextExchangeSignature;
-            setDomainExchangeRequests(nextExchangeRows);
-            setExchangePagination(nextExchangePagination);
-            notifyExchangeStatusChanges(nextExchangeRows);
-            if (pendingAmountDelta) {
-              setPendingExchangeAmount((current) => Math.max(current + pendingAmountDelta, 0));
-            }
-            financialDataChanged = true;
-          }
-        }
-
-        if (financialDataChanged) {
-          await refreshSettlementData();
-        }
-
-        setHistoryError("");
-      } catch (error) {
-        if (!stopped) {
-          setHistoryError(error.message);
-        }
-      } finally {
-        if (!stopped && generation === historyPollGenerationRef.current) {
-          timer = window.setTimeout(pollChangedHistory, HISTORY_REFRESH_INTERVAL_MS);
-        }
-      }
-    }
-
-    timer = window.setTimeout(pollChangedHistory, HISTORY_REFRESH_INTERVAL_MS);
-
-    return () => {
-      stopped = true;
-      if (historyPollGenerationRef.current === generation) {
-        historyPollGenerationRef.current += 1;
-      }
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [
-    chargePage,
-    exchangePage,
-    loggedIn,
-    partner?.domainId,
-    partner?.domain,
-    partner?.name,
-    refreshSettlementData,
-    session?.token
-  ]);
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
@@ -1067,11 +990,14 @@ export default function Home() {
       setChargeUserId("");
       setChargeDepositor("");
       setChargeAmount("");
-      if (chargePage === 1) {
-        void loadChargePage(1).catch((error) => setHistoryError(error.message));
-      } else {
+      if (chargePage !== 1) {
         setChargePage(1);
       }
+      await Promise.all([
+        loadChargePage(1),
+        refreshPendingSummary(),
+        refreshSettlementData()
+      ]);
     } catch (error) {
       setChargeStatus({
         type: "error",
@@ -1115,25 +1041,18 @@ export default function Home() {
         type: "success",
         message: result.message ?? "환전신청이 관리자에 전송되었습니다."
       });
-      setDomainExchangeRequests((current) => [
-        {
-          id: result.requestId ?? "대기",
-          bankName: withdrawBank,
-          accountHolder: withdrawAccountHolder,
-          accountNumber: withdrawAccountNumber,
-          amount,
-          requestedAt: "방금",
-          completedAt: "-",
-          status: "PENDING"
-        },
-        ...current
-      ]);
-      setPendingExchangeAmount((current) => current + amount);
       setWithdrawAmount("");
       setWithdrawBank("");
       setWithdrawAccountHolder("");
       setWithdrawAccountNumber("");
-      setExchangePage(1);
+      if (exchangePage !== 1) {
+        setExchangePage(1);
+      }
+      await Promise.all([
+        loadExchangePage(1),
+        refreshPendingSummary(),
+        refreshSettlementData()
+      ]);
     } catch (error) {
       setWithdrawStatus({
         type: "error",
