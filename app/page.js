@@ -187,10 +187,10 @@ function appendDomainParams(params, partner) {
 
 const inFlightGetRequests = new Map();
 
-function getJson(url, token) {
+function getJson(url, token, options = {}) {
   const requestKey = `${token ?? ""}:${url}`;
 
-  if (inFlightGetRequests.has(requestKey)) {
+  if (!options.force && inFlightGetRequests.has(requestKey)) {
     return inFlightGetRequests.get(requestKey);
   }
 
@@ -213,7 +213,10 @@ function getJson(url, token) {
       }
     });
 
-  inFlightGetRequests.set(requestKey, request);
+  if (!options.force) {
+    inFlightGetRequests.set(requestKey, request);
+  }
+
   return request;
 }
 
@@ -307,7 +310,7 @@ export default function Home() {
     [pendingExchangeAmount, withdrawBalanceAmount]
   );
 
-  const refreshPendingSummary = useCallback(async () => {
+  const refreshPendingSummary = useCallback(async (options = {}) => {
     if (!loggedIn || !partner) {
       return;
     }
@@ -326,8 +329,16 @@ export default function Home() {
     const chargeParams = new URLSearchParams(baseParams);
     const exchangeParams = new URLSearchParams(baseParams);
     const [pendingCharges, firstPendingExchanges] = await Promise.all([
-      getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
-      getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token)
+      getJson(
+        `/api/integration/charge-requests?${chargeParams.toString()}`,
+        session?.token,
+        options
+      ),
+      getJson(
+        `/api/integration/domain-exchanges?${exchangeParams.toString()}`,
+        session?.token,
+        options
+      )
     ]);
 
     const exchangePageSize = normalizePagination(firstPendingExchanges.pagination, 1).pageSize;
@@ -343,7 +354,8 @@ export default function Home() {
       nextExchangeParams.set("page", String(nextPage));
       const nextPendingExchanges = await getJson(
         `/api/integration/domain-exchanges?${nextExchangeParams.toString()}`,
-        session?.token
+        session?.token,
+        options
       );
       pendingExchangeItems = pendingExchangeItems.concat(nextPendingExchanges.items ?? []);
     }
@@ -363,7 +375,7 @@ export default function Home() {
     session?.token
   ]);
 
-  const refreshSettlementData = useCallback(async () => {
+  const refreshSettlementData = useCallback(async (options = {}) => {
     if (!loggedIn || !partner) {
       return;
     }
@@ -383,8 +395,16 @@ export default function Home() {
 
     try {
       const [settlements, dailySettlements] = await Promise.all([
-        getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
-        getJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`, session?.token)
+        getJson(
+          `/api/integration/domain-settlements?${settlementParams.toString()}`,
+          session?.token,
+          options
+        ),
+        getJson(
+          `/api/integration/domain-settlements?${dailySettlementParams.toString()}`,
+          session?.token,
+          options
+        )
       ]);
 
       setSettlementRows(settlements.items ?? []);
@@ -431,7 +451,7 @@ export default function Home() {
     };
   }, [loggedIn, partner, refreshSettlementData]);
 
-  const loadChargePage = useCallback(async (page) => {
+  const loadChargePage = useCallback(async (page, options = {}) => {
     if (!loggedIn || !partner) {
       return;
     }
@@ -447,7 +467,8 @@ export default function Home() {
 
     const charges = await getJson(
       `/api/integration/charge-requests?${params.toString()}`,
-      session?.token
+      session?.token,
+      options
     );
     const pagination = normalizePagination(charges.pagination, page);
     const rows = charges.items ?? [];
@@ -465,7 +486,7 @@ export default function Home() {
     session?.token
   ]);
 
-  const loadExchangePage = useCallback(async (page) => {
+  const loadExchangePage = useCallback(async (page, options = {}) => {
     if (!loggedIn || !partner) {
       return;
     }
@@ -481,7 +502,8 @@ export default function Home() {
 
     const exchanges = await getJson(
       `/api/integration/domain-exchanges?${params.toString()}`,
-      session?.token
+      session?.token,
+      options
     );
     const pagination = normalizePagination(exchanges.pagination, page);
     const rows = exchanges.items ?? [];
@@ -691,11 +713,13 @@ export default function Home() {
     }
 
     function refreshServerState() {
-      return Promise.all([
-        loadChargePage(chargePage),
-        loadExchangePage(exchangePage),
-        refreshPendingSummary(),
-        refreshSettlementData()
+      const forceRefresh = { force: true };
+
+      return Promise.allSettled([
+        loadChargePage(chargePage, forceRefresh),
+        loadExchangePage(exchangePage, forceRefresh),
+        refreshPendingSummary(forceRefresh),
+        refreshSettlementData(forceRefresh)
       ]);
     }
 
@@ -740,16 +764,16 @@ export default function Home() {
       "domain-balance-updated"
     ];
 
-    events.addEventListener("open", handleOpen);
-    events.addEventListener("error", handleError);
+    events.onopen = handleOpen;
+    events.onerror = handleError;
     eventNames.forEach((eventName) => {
       events.addEventListener(eventName, handleDomainEvent);
     });
 
     return () => {
       sseConnectedRef.current = false;
-      events.removeEventListener("open", handleOpen);
-      events.removeEventListener("error", handleError);
+      events.onopen = null;
+      events.onerror = null;
       eventNames.forEach((eventName) => {
         events.removeEventListener(eventName, handleDomainEvent);
       });
