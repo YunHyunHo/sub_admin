@@ -218,6 +218,14 @@ function appendDomainParams(params, partner) {
 
 const inFlightGetRequests = new Map();
 
+class ApiRequestError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 function getJson(url, token, options = {}) {
   const requestKey = `${token ?? ""}:${url}`;
 
@@ -233,7 +241,7 @@ function getJson(url, token, options = {}) {
       const result = await response.json().catch(() => null);
 
       if (!response.ok || !result?.ok) {
-        throw new Error(result?.message ?? "데이터 조회에 실패했습니다.");
+        throw new ApiRequestError(result?.message ?? "데이터 조회에 실패했습니다.", response.status);
       }
 
       return result;
@@ -268,7 +276,7 @@ async function postJson(url, payload, token) {
   const result = await response.json().catch(() => null);
 
   if (!response.ok || !result?.ok) {
-    throw new Error(result?.message ?? "요청 처리에 실패했습니다.");
+    throw new ApiRequestError(result?.message ?? "요청 처리에 실패했습니다.", response.status);
   }
 
   return result;
@@ -309,6 +317,8 @@ export default function Home() {
   const [historyError, setHistoryError] = useState("");
   const [dashboard, setDashboard] = useState(null);
   const historyReadyRef = useRef(false);
+  const sessionRef = useRef(null);
+  const refreshPromiseRef = useRef(null);
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
@@ -324,6 +334,11 @@ export default function Home() {
   const partner = session?.partner ?? dashboard?.partner;
   const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
   const withdrawBalanceAmount = useMemo(
     () => {
       if (dailySettlementTotal?.balanceAmount != null) {
@@ -365,16 +380,8 @@ export default function Home() {
     const chargeParams = new URLSearchParams(baseParams);
     const exchangeParams = new URLSearchParams(baseParams);
     const [pendingCharges, firstPendingExchanges] = await Promise.all([
-      getJson(
-        `/api/integration/charge-requests?${chargeParams.toString()}`,
-        session?.token,
-        options
-      ),
-      getJson(
-        `/api/integration/domain-exchanges?${exchangeParams.toString()}`,
-        session?.token,
-        options
-      )
+      authGetJson(`/api/integration/charge-requests?${chargeParams.toString()}`, options),
+      authGetJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, options)
     ]);
 
     const exchangePageSize = normalizePagination(firstPendingExchanges.pagination, 1).pageSize;
@@ -388,9 +395,8 @@ export default function Home() {
     ) {
       const nextExchangeParams = new URLSearchParams(exchangeParams);
       nextExchangeParams.set("page", String(nextPage));
-      const nextPendingExchanges = await getJson(
+      const nextPendingExchanges = await authGetJson(
         `/api/integration/domain-exchanges?${nextExchangeParams.toString()}`,
-        session?.token,
         options
       );
       pendingExchangeItems = pendingExchangeItems.concat(nextPendingExchanges.items ?? []);
@@ -431,14 +437,12 @@ export default function Home() {
 
     try {
       const [settlements, dailySettlements] = await Promise.all([
-        getJson(
+        authGetJson(
           `/api/integration/domain-settlements?${settlementParams.toString()}`,
-          session?.token,
           options
         ),
-        getJson(
+        authGetJson(
           `/api/integration/domain-settlements?${dailySettlementParams.toString()}`,
-          session?.token,
           options
         )
       ]);
@@ -514,9 +518,8 @@ export default function Home() {
 
     appendDomainParams(params, partner);
 
-    const charges = await getJson(
+    const charges = await authGetJson(
       `/api/integration/charge-requests?${params.toString()}`,
-      session?.token,
       options
     );
     const pagination = normalizePagination(charges.pagination, page);
@@ -553,9 +556,8 @@ export default function Home() {
     });
     appendDomainParams(params, partner);
 
-    const exchanges = await getJson(
+    const exchanges = await authGetJson(
       `/api/integration/domain-exchanges?${params.toString()}`,
-      session?.token,
       options
     );
     const pagination = normalizePagination(exchanges.pagination, page);
@@ -575,12 +577,117 @@ export default function Home() {
   ]);
 
   const logout = useCallback(() => {
+    const currentSession = sessionRef.current;
+
+    if (currentSession?.token || currentSession?.refreshToken) {
+      void fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentSession.token ? { Authorization: `Bearer ${currentSession.token}` } : {})
+        },
+        body: JSON.stringify({ refreshToken: currentSession.refreshToken })
+      }).catch(() => {});
+    }
+
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_MENU_STORAGE_KEY);
+    sessionRef.current = null;
     setSession(null);
     setLoggedIn(false);
     setActive("charge");
   }, []);
+
+  function saveSession(nextSession) {
+    sessionRef.current = nextSession;
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+    setSession(nextSession);
+    setLoggedIn(true);
+  }
+
+  function clearSession() {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionRef.current = null;
+    setSession(null);
+    setLoggedIn(false);
+    setActive("charge");
+  }
+
+  async function refreshSessionToken() {
+    const currentSession = sessionRef.current;
+
+    if (!currentSession?.refreshToken) {
+      throw new Error("refreshToken이 없습니다.");
+    }
+
+    if (!refreshPromiseRef.current) {
+      refreshPromiseRef.current = fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ refreshToken: currentSession.refreshToken })
+      })
+        .then(async (response) => {
+          const result = await response.json().catch(() => null);
+
+          if (!response.ok || !result?.ok || !result?.token) {
+            throw new Error(result?.message ?? "로그인 토큰 갱신에 실패했습니다.");
+          }
+
+          const nextSession = {
+            ...currentSession,
+            ...result,
+            user: result.user ?? currentSession.user,
+            partner: result.partner ?? currentSession.partner,
+            refreshToken: result.refreshToken ?? currentSession.refreshToken
+          };
+
+          saveSession(nextSession);
+
+          return nextSession;
+        })
+        .finally(() => {
+          refreshPromiseRef.current = null;
+        });
+    }
+
+    return refreshPromiseRef.current;
+  }
+
+  async function authGetJson(url, options = {}) {
+    try {
+      return await getJson(url, sessionRef.current?.token, options);
+    } catch (error) {
+      if (!sessionRef.current?.refreshToken || error.status !== 401) {
+        throw error;
+      }
+
+      const refreshedSession = await refreshSessionToken().catch((refreshError) => {
+        clearSession();
+        throw refreshError;
+      });
+
+      return getJson(url, refreshedSession.token, { ...options, force: true });
+    }
+  }
+
+  async function authPostJson(url, payload) {
+    try {
+      return await postJson(url, payload, sessionRef.current?.token);
+    } catch (error) {
+      if (!sessionRef.current?.refreshToken || error.status !== 401) {
+        throw error;
+      }
+
+      const refreshedSession = await refreshSessionToken().catch((refreshError) => {
+        clearSession();
+        throw refreshError;
+      });
+
+      return postJson(url, payload, refreshedSession.token);
+    }
+  }
 
   function updateOrderFilter(key, value) {
     setOrderFilters((current) => ({
@@ -887,6 +994,15 @@ export default function Home() {
 
     try {
       const parsedSession = JSON.parse(savedSession);
+      sessionRef.current = parsedSession;
+
+      if (parsedSession.refreshToken) {
+        refreshSessionToken().catch(() => {
+          clearSession();
+        });
+        return;
+      }
+
       setSession(parsedSession);
       setLoggedIn(true);
     } catch {
@@ -1004,10 +1120,10 @@ export default function Home() {
         dailySettlementParams.set("from", todayRange.from);
         dailySettlementParams.set("to", todayRange.to);
         const [charges, exchanges, settlements, dailySettlements] = await Promise.all([
-          getJson(`/api/integration/charge-requests?${chargeParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-settlements?${settlementParams.toString()}`, session?.token),
-          getJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`, session?.token)
+          authGetJson(`/api/integration/charge-requests?${chargeParams.toString()}`),
+          authGetJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`),
+          authGetJson(`/api/integration/domain-settlements?${settlementParams.toString()}`),
+          authGetJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`)
         ]);
 
         const exchangeItems = exchanges.items ?? [];
@@ -1094,9 +1210,7 @@ export default function Home() {
 
   if (!loggedIn) {
     return <LoginScreen onLogin={(result) => {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(result));
-      setSession(result);
-      setLoggedIn(true);
+      saveSession(result);
     }} />;
   }
 
@@ -1120,13 +1234,13 @@ export default function Home() {
     }
 
     try {
-      const result = await postJson("/api/integration/charge-requests", {
+      const result = await authPostJson("/api/integration/charge-requests", {
         externalId: createExternalId("charge", chargeUserId || sessionUserId),
         partner,
         userId: chargeUserId || sessionUserId,
         depositorName: chargeDepositor,
         amount
-      }, session?.token);
+      });
       setChargeStatus({
         type: "success",
         message: result.message ?? "충전신청이 관리자에 전송되었습니다."
@@ -1172,7 +1286,7 @@ export default function Home() {
     }
 
     try {
-      const result = await postJson("/api/integration/domain-exchanges", {
+      const result = await authPostJson("/api/integration/domain-exchanges", {
         externalId: createExternalId("exchange", sessionUserId),
         partner,
         userId: sessionUserId,
@@ -1180,7 +1294,7 @@ export default function Home() {
         bankName: withdrawBank,
         accountHolder: withdrawAccountHolder,
         accountNumber: withdrawAccountNumber
-      }, session?.token);
+      });
       setWithdrawStatus({
         type: "success",
         message: result.message ?? "환전신청이 관리자에 전송되었습니다."

@@ -1,7 +1,7 @@
+import { AUTH_API_KEY, AUTH_API_URL } from "../_utils";
+
 const DEMO_LOGIN_ID = "admin";
 const DEMO_PASSWORD = "0000";
-const AUTH_API_URL = process.env.AUTH_API_URL ?? "https://laylow.me/partner/auth/login";
-const AUTH_API_KEY = process.env.AUTH_API_KEY;
 
 function normalizeWithdrawAccount(source) {
   const account =
@@ -95,6 +95,7 @@ export async function POST(request) {
     return Response.json({
       ok: true,
       token: result.token,
+      refreshToken: result.refreshToken,
       user: {
         loginId: result.user?.loginId ?? loginId,
         name: result.user?.name ?? result.partner?.name ?? loginId,
