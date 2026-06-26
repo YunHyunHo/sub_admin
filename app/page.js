@@ -680,12 +680,15 @@ export default function Home() {
         throw error;
       }
 
-      const refreshedSession = await refreshSessionToken().catch((refreshError) => {
+      await refreshSessionToken().catch((refreshError) => {
         clearSession();
         throw refreshError;
       });
 
-      return postJson(url, payload, refreshedSession.token);
+      throw new ApiRequestError(
+        "로그인 정보가 갱신되었습니다. 다시 신청해주세요.",
+        401
+      );
     }
   }
 
