@@ -441,6 +441,35 @@ button {
   padding: 0 14px;
 }
 
+.selectField {
+  padding-right: 10px;
+}
+
+.selectField select {
+  height: 36px;
+  min-width: 62px;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  outline: 0;
+}
+
+.selectField option {
+  color: #111827;
+}
+
+.srOnly {
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .searchBox,
 .dateInput {
   padding: 0 12px;

@@ -127,6 +127,34 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatShortDate(value) {
+  const text = String(value ?? "").trim();
+  const matched = text.match(/^(\d{2}|\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!matched) {
+    return text;
+  }
+
+  return `${matched[1].slice(-2)}-${matched[2]}-${matched[3]}`;
+}
+
+function normalizeDateInput(value) {
+  const text = String(value ?? "").trim();
+  const fullMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (fullMatch) {
+    return text;
+  }
+
+  const shortMatch = text.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+
+  if (shortMatch) {
+    return `20${shortMatch[1]}-${shortMatch[2]}-${shortMatch[3]}`;
+  }
+
+  return text;
+}
+
 function formatStatus(status) {
   const statusMap = {
     PENDING: "대기",
@@ -138,14 +166,17 @@ function formatStatus(status) {
 }
 
 function getDefaultDateRange() {
-  const now = new Date();
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const from = new Date(to);
-  from.setDate(to.getDate() - 7);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Seoul"
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
 
   return {
-    from: formatLocalDate(from),
-    to: formatLocalDate(to)
+    from: `${dateParts.year}-${dateParts.month}-01`,
+    to: `${dateParts.year}-${dateParts.month}-${dateParts.day}`
   };
 }
 
@@ -265,6 +296,11 @@ export default function Home() {
   const [exchangePage, setExchangePage] = useState(1);
   const [chargePagination, setChargePagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [exchangePagination, setExchangePagination] = useState({ page: 1, pageSize: 10, total: 0 });
+  const [orderFilters, setOrderFilters] = useState(() => ({
+    keyword: "",
+    status: "",
+    ...getDefaultDateRange()
+  }));
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [dailySettlementTotal, setDailySettlementTotal] = useState(null);
@@ -436,6 +472,11 @@ export default function Home() {
           return;
         }
 
+        setOrderFilters((current) => ({
+          ...current,
+          ...getDefaultDateRange()
+        }));
+        setChargePage(1);
         await refreshSettlementData();
         scheduleMidnightRefresh();
       }, getMillisecondsUntilNextKoreaMidnight());
@@ -456,13 +497,21 @@ export default function Home() {
       return;
     }
 
-    const range = getDefaultDateRange();
     const params = new URLSearchParams({
       page: String(page),
       pageSize: "10",
-      from: range.from,
-      to: range.to
+      from: orderFilters.from,
+      to: orderFilters.to
     });
+
+    if (orderFilters.status) {
+      params.set("status", orderFilters.status);
+    }
+
+    if (orderFilters.keyword.trim()) {
+      params.set("keyword", orderFilters.keyword.trim());
+    }
+
     appendDomainParams(params, partner);
 
     const charges = await getJson(
@@ -480,6 +529,10 @@ export default function Home() {
     setHistoryError("");
   }, [
     loggedIn,
+    orderFilters.from,
+    orderFilters.keyword,
+    orderFilters.status,
+    orderFilters.to,
     partner?.domainId,
     partner?.domain,
     partner?.name,
@@ -528,6 +581,31 @@ export default function Home() {
     setLoggedIn(false);
     setActive("charge");
   }, []);
+
+  function updateOrderFilter(key, value) {
+    setOrderFilters((current) => ({
+      ...current,
+      [key]: key === "from" || key === "to" ? normalizeDateInput(value) : value
+    }));
+  }
+
+  function searchOrders() {
+    if (chargePage !== 1) {
+      setChargePage(1);
+      return;
+    }
+
+    loadChargePage(1, { force: true }).catch((error) => setHistoryError(error.message));
+  }
+
+  function resetOrderFilters() {
+    setOrderFilters({
+      keyword: "",
+      status: "",
+      ...getDefaultDateRange()
+    });
+    setChargePage(1);
+  }
 
   function handleThemeChange(nextDark) {
     window.localStorage.setItem(THEME_STORAGE_KEY, nextDark ? "dark" : "light");
@@ -910,6 +988,14 @@ export default function Home() {
         setHistoryError("");
         const chargeParams = new URLSearchParams(baseParams);
         chargeParams.set("page", String(chargePage));
+        chargeParams.set("from", orderFilters.from);
+        chargeParams.set("to", orderFilters.to);
+        if (orderFilters.status) {
+          chargeParams.set("status", orderFilters.status);
+        }
+        if (orderFilters.keyword.trim()) {
+          chargeParams.set("keyword", orderFilters.keyword.trim());
+        }
         const exchangeParams = new URLSearchParams(baseParams);
         exchangeParams.set("page", String(exchangePage));
         const settlementParams = new URLSearchParams(baseParams);
@@ -979,6 +1065,10 @@ export default function Home() {
     };
   }, [
     loggedIn,
+    orderFilters.from,
+    orderFilters.keyword,
+    orderFilters.status,
+    orderFilters.to,
     partner?.domainId,
     partner?.domain,
     partner?.name,
@@ -1215,6 +1305,10 @@ export default function Home() {
         {active === "orders" && (
           <OrdersPage
             error={historyError}
+            filters={orderFilters}
+            onFilterChange={updateOrderFilter}
+            onReset={resetOrderFilters}
+            onSearch={searchOrders}
             page={chargePage}
             pagination={chargePagination}
             rows={chargeRequests}
@@ -1492,23 +1586,57 @@ function FormNotice({ status }) {
   return <p className={`formNotice ${status.type}`}>{status.message}</p>;
 }
 
-function OrdersPage({ error, page, pagination, rows, setPage }) {
+function OrdersPage({ error, filters, onFilterChange, onReset, onSearch, page, pagination, rows, setPage }) {
+  const keyword = filters.keyword.trim().toLowerCase();
+  const filteredRows = keyword
+    ? rows.filter((row) => [
+      row.id,
+      row.bankName,
+      row.depositorName,
+      row.accountNumber,
+      row.amount,
+      row.buyer,
+      row.requestedAt,
+      row.changedAt,
+      formatStatus(row.status)
+    ].some((value) => String(value ?? "").toLowerCase().includes(keyword)))
+    : rows;
+
   return (
     <PageFrame title="구매내역">
       <div className="toolbar">
         <strong>조건선택</strong>
         <SelectButton label="충전" />
-        <SelectButton label="전체" />
+        <SelectButton
+          label="상태"
+          onChange={(event) => onFilterChange("status", event.target.value)}
+          options={[
+            { label: "전체", value: "" },
+            { label: "대기", value: "PENDING" },
+            { label: "승인", value: "APPROVED" },
+            { label: "거절", value: "REJECTED" }
+          ]}
+          value={filters.status}
+        />
         <div className="toolbarSpacer" />
         <label className="searchBox">
           <Search size={17} />
-          <input placeholder="구매자 입력" />
+          <input
+            onChange={(event) => onFilterChange("keyword", event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                onSearch();
+              }
+            }}
+            placeholder="구매자 입력"
+            value={filters.keyword}
+          />
         </label>
-        <DateInput value="26-05-24" />
+        <DateInput onChange={(event) => onFilterChange("from", event.target.value)} value={formatShortDate(filters.from)} />
         <span className="dash">-</span>
-        <DateInput value="26-05-26" />
-        <button className="toolbarBtn" type="button">검색</button>
-        <button className="toolbarBtn muted" type="button">
+        <DateInput onChange={(event) => onFilterChange("to", event.target.value)} value={formatShortDate(filters.to)} />
+        <button className="toolbarBtn" onClick={onSearch} type="button">검색</button>
+        <button className="toolbarBtn muted" onClick={onReset} type="button">
           <RefreshCcw size={16} />
           초기화
         </button>
@@ -1517,7 +1645,7 @@ function OrdersPage({ error, page, pagination, rows, setPage }) {
       <DataTable
         columns={["ID", "은행", "예금주", "계좌번호", "요청금액", "구매자", "요청일", "상태변경일", "상태"]}
         highlightColumns={[2, 3, 4]}
-        rows={rows.map((row) => [
+        rows={filteredRows.map((row) => [
           row.id ? String(row.id).slice(0, 5) : "-",
           row.bankName ?? "-",
           row.depositorName ?? "-",
@@ -1586,7 +1714,21 @@ function PageFrame({ title, children }) {
   );
 }
 
-function SelectButton({ label }) {
+function SelectButton({ label, onChange, options, value }) {
+  if (options) {
+    return (
+      <label className="selectBtn selectField">
+        <span className="srOnly">{label}</span>
+        <select onChange={onChange} value={value}>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <ChevronDown size={16} />
+      </label>
+    );
+  }
+
   return (
     <button className="selectBtn" type="button">
       {label}
@@ -1595,11 +1737,11 @@ function SelectButton({ label }) {
   );
 }
 
-function DateInput({ value }) {
+function DateInput({ onChange, value }) {
   return (
     <label className="dateInput">
       <CalendarDays size={16} />
-      <input defaultValue={value} />
+      <input onChange={onChange} readOnly={!onChange} value={value} />
     </label>
   );
 }
