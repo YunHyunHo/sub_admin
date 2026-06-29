@@ -19,8 +19,9 @@ import {
   WalletCards
 } from "lucide-react";
 
-const MIN_TRANSACTION_AMOUNT = 10000;
+const MIN_CHARGE_AMOUNT = 1000;
 const moneyButtons = [10000, 50000, 100000, 500000, 1000000, 5000000];
+const chargeMoneyButtons = [1000, ...moneyButtons];
 
 const navItems = [
   { key: "charge", label: "충전", icon: ArrowDownToLine },
@@ -74,13 +75,13 @@ function parseWon(value) {
 }
 
 function floorToTransactionUnit(value) {
-  return Math.floor(parseWon(value) / MIN_TRANSACTION_AMOUNT) * MIN_TRANSACTION_AMOUNT;
+  return Math.floor(parseWon(value) / MIN_CHARGE_AMOUNT) * MIN_CHARGE_AMOUNT;
 }
 
-function isValidTransactionAmount(value) {
+function isValidChargeAmount(value) {
   const amount = parseWon(value);
 
-  return amount >= MIN_TRANSACTION_AMOUNT && amount % MIN_TRANSACTION_AMOUNT === 0;
+  return amount >= MIN_CHARGE_AMOUNT && amount % MIN_CHARGE_AMOUNT === 0;
 }
 
 function formatWonText(value) {
@@ -1227,10 +1228,10 @@ export default function Home() {
 
     const amount = parseWon(chargeAmount);
 
-    if (!isValidTransactionAmount(amount)) {
+    if (!isValidChargeAmount(amount)) {
       setChargeStatus({
         type: "error",
-        message: "충전 금액은 1만원 이상, 1만원 단위로 입력해주세요."
+        message: "충전 금액은 1천원 이상, 1천원 단위로 입력해주세요."
       });
       setChargeSubmitting(false);
       return;
@@ -1529,12 +1530,12 @@ function Toggle({ label, checked, onChange, icons }) {
   );
 }
 
-function AmountButtons({ allAmount = 0, onPick, includeAll }) {
+function AmountButtons({ allAmount = 0, onPick, includeAll, values = moneyButtons }) {
   return (
     <div className="amountButtons">
-      {moneyButtons.map((value) => (
+      {values.map((value) => (
         <button key={value} onClick={() => onPick(value, "add")} type="button">
-          {value / 10000}만원
+          {value < 10000 ? `${value / 1000}천원` : `${value / 10000}만원`}
         </button>
       ))}
       {includeAll && (
@@ -1601,7 +1602,7 @@ function ChargePage({
             placeholder="충전 금액 입력"
             value={amount ? formatWon(Number(amount)) : ""}
           />
-          <AmountButtons onPick={handleAmountPick} />
+          <AmountButtons onPick={handleAmountPick} values={chargeMoneyButtons} />
         </div>
       </section>
       <button className="primaryAction" disabled={submitting} onClick={onSubmit} type="button">
