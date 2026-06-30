@@ -128,17 +128,6 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-function formatShortDate(value) {
-  const text = String(value ?? "").trim();
-  const matched = text.match(/^(\d{2}|\d{4})-(\d{2})-(\d{2})$/);
-
-  if (!matched) {
-    return text;
-  }
-
-  return `${matched[1].slice(-2)}-${matched[2]}-${matched[3]}`;
-}
-
 function normalizeDateInput(value) {
   const text = String(value ?? "").trim();
   const fullMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -310,6 +299,7 @@ export default function Home() {
     status: "",
     ...getDefaultDateRange()
   }));
+  const [settlementFilters, setSettlementFilters] = useState(() => getDefaultDateRange());
   const [settlementRows, setSettlementRows] = useState([]);
   const [settlementTotal, setSettlementTotal] = useState(null);
   const [dailySettlementTotal, setDailySettlementTotal] = useState(null);
@@ -323,6 +313,7 @@ export default function Home() {
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
+  const settlementRangeRef = useRef(getDefaultDateRange());
   const chargeStatusRef = useRef(new Map());
   const chargeStatusReadyRef = useRef(false);
   const exchangeStatusRef = useRef(new Map());
@@ -423,7 +414,7 @@ export default function Home() {
       return;
     }
 
-    const range = getDefaultDateRange();
+    const range = settlementRangeRef.current;
     const todayRange = getKoreaTodayDateRange();
     const settlementParams = new URLSearchParams({ from: range.from, to: range.to });
     appendDomainParams(settlementParams, partner);
@@ -481,6 +472,9 @@ export default function Home() {
           ...current,
           ...getDefaultDateRange()
         }));
+        const nextSettlementRange = getDefaultDateRange();
+        settlementRangeRef.current = nextSettlementRange;
+        setSettlementFilters(nextSettlementRange);
         setChargePage(1);
         await refreshSettlementData();
         scheduleMidnightRefresh();
@@ -716,6 +710,28 @@ export default function Home() {
       ...getDefaultDateRange()
     });
     setChargePage(1);
+  }
+
+  function updateSettlementFilter(key, value) {
+    setSettlementFilters((current) => ({
+      ...current,
+      [key]: normalizeDateInput(value)
+    }));
+  }
+
+  function searchSettlements() {
+    if (!settlementFilters.from || !settlementFilters.to) {
+      setHistoryError("조회할 시작일과 종료일을 선택해주세요.");
+      return;
+    }
+
+    if (settlementFilters.from > settlementFilters.to) {
+      setHistoryError("시작일은 종료일보다 늦을 수 없습니다.");
+      return;
+    }
+
+    settlementRangeRef.current = settlementFilters;
+    refreshSettlementData({ force: true });
   }
 
   function handleThemeChange(nextDark) {
@@ -1434,7 +1450,14 @@ export default function Home() {
           />
         )}
         {active === "settlement" && (
-          <SettlementPage error={historyError} rows={settlementRows} total={settlementTotal} />
+          <SettlementPage
+            error={historyError}
+            filters={settlementFilters}
+            onFilterChange={updateSettlementFilter}
+            onSearch={searchSettlements}
+            rows={settlementRows}
+            total={settlementTotal}
+          />
         )}
       </section>
     </main>
@@ -1750,9 +1773,9 @@ function OrdersPage({ error, filters, onFilterChange, onReset, onSearch, page, p
             value={filters.keyword}
           />
         </label>
-        <DateInput onChange={(event) => onFilterChange("from", event.target.value)} value={formatShortDate(filters.from)} />
+        <DateInput onChange={(event) => onFilterChange("from", event.target.value)} value={filters.from} />
         <span className="dash">-</span>
-        <DateInput onChange={(event) => onFilterChange("to", event.target.value)} value={formatShortDate(filters.to)} />
+        <DateInput onChange={(event) => onFilterChange("to", event.target.value)} value={filters.to} />
         <button className="toolbarBtn" onClick={onSearch} type="button">검색</button>
         <button className="toolbarBtn muted" onClick={onReset} type="button">
           <RefreshCcw size={16} />
@@ -1781,7 +1804,7 @@ function OrdersPage({ error, filters, onFilterChange, onReset, onSearch, page, p
   );
 }
 
-function SettlementPage({ error, rows, total }) {
+function SettlementPage({ error, filters, onFilterChange, onSearch, rows, total }) {
   const tableRows = rows.map((row) => [
     row.date ?? "-",
     formatWonText(row.chargeAmount),
@@ -1807,10 +1830,16 @@ function SettlementPage({ error, rows, total }) {
       <div className="toolbar settlementTools">
         <div className="toolbarSpacer" />
         <strong>날짜 조회</strong>
-        <DateInput value="26-05-19" />
+        <DateInput
+          onChange={(event) => onFilterChange("from", event.target.value)}
+          value={filters.from}
+        />
         <span className="dash">-</span>
-        <DateInput value="26-05-26" />
-        <button className="toolbarBtn" type="button">조회</button>
+        <DateInput
+          onChange={(event) => onFilterChange("to", event.target.value)}
+          value={filters.to}
+        />
+        <button className="toolbarBtn" onClick={onSearch} type="button">조회</button>
       </div>
       <FormNotice status={error ? { type: "error", message: error } : null} />
       <DataTable
@@ -1859,7 +1888,13 @@ function DateInput({ onChange, value }) {
   return (
     <label className="dateInput">
       <CalendarDays size={16} />
-      <input onChange={onChange} readOnly={!onChange} value={value} />
+      <input
+        onChange={onChange}
+        onClick={(event) => onChange && event.currentTarget.showPicker?.()}
+        readOnly={!onChange}
+        type="date"
+        value={value}
+      />
     </label>
   );
 }
