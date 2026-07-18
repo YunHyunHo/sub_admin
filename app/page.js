@@ -627,7 +627,10 @@ export default function Home() {
           const result = await response.json().catch(() => null);
 
           if (!response.ok || !result?.ok || !result?.token) {
-            throw new Error(result?.message ?? "로그인 토큰 갱신에 실패했습니다.");
+            throw new ApiRequestError(
+              result?.message ?? "로그인 토큰 갱신에 실패했습니다.",
+              response.status
+            );
           }
 
           const nextSession = {
@@ -659,7 +662,9 @@ export default function Home() {
       }
 
       const refreshedSession = await refreshSessionToken().catch((refreshError) => {
-        clearSession();
+        if (refreshError.status === 401) {
+          clearSession();
+        }
         throw refreshError;
       });
 
@@ -676,7 +681,9 @@ export default function Home() {
       }
 
       await refreshSessionToken().catch((refreshError) => {
-        clearSession();
+        if (refreshError.status === 401) {
+          clearSession();
+        }
         throw refreshError;
       });
 
@@ -1017,8 +1024,20 @@ export default function Home() {
       sessionRef.current = parsedSession;
 
       if (parsedSession.refreshToken) {
-        refreshSessionToken().catch(() => {
-          clearSession();
+        refreshSessionToken().catch((refreshError) => {
+          if (refreshError.status === 401) {
+            clearSession();
+            return;
+          }
+
+          setSession(parsedSession);
+          setLoggedIn(true);
+          console.warn("[partner-auth] refresh retryable failure", {
+            status: refreshError.status ?? "unknown",
+            message: refreshError.message,
+            partnerId: parsedSession.partner?.id,
+            domainId: parsedSession.partner?.domainId
+          });
         });
         return;
       }
