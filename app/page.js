@@ -34,6 +34,7 @@ const SESSION_STORAGE_KEY = "winpay_partner_session";
 const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
 const THEME_STORAGE_KEY = "winpay_partner_theme";
 const HISTORY_REFRESH_INTERVAL_MS = 5000;
+const SERVER_SYNC_INTERVAL_MS = 30000;
 const NOTICE_SOUND_PATH = "/sounds/notice.mp3";
 
 function getSharedNoticeAudio() {
@@ -310,6 +311,7 @@ export default function Home() {
   const historyReadyRef = useRef(false);
   const sessionRef = useRef(null);
   const refreshPromiseRef = useRef(null);
+  const serverRefreshPromiseRef = useRef(null);
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
@@ -905,16 +907,48 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!loggedIn || !partner?.domainId || typeof EventSource === "undefined") {
+    if (!loggedIn || !partner?.domainId) {
       return;
     }
 
-    const eventsUrl = `https://laylow.me/api/integration/domain-events?domainId=${encodeURIComponent(partner.domainId)}`;
-    const events = new EventSource(eventsUrl);
+    let stopped = false;
+    let syncTimer = null;
+    let events = null;
+
+    function refreshServerState(reason) {
+      const forceRefresh = { force: true };
+
+      if (serverRefreshPromiseRef.current) {
+        return serverRefreshPromiseRef.current;
+      }
+
+      serverRefreshPromiseRef.current = Promise.allSettled([
+        loadChargePage(chargePage, forceRefresh),
+        loadExchangePage(exchangePage, forceRefresh),
+        refreshPendingSummary(forceRefresh),
+        refreshSettlementData(forceRefresh)
+      ]).then((results) => {
+        const failed = results.find((result) => result.status === "rejected");
+
+        if (failed && !stopped) {
+          console.warn("[domain-sync] 서버 재조회 일부 실패", {
+            reason,
+            message: failed.reason?.message ?? "unknown"
+          });
+        }
+
+        return results;
+      }).finally(() => {
+        serverRefreshPromiseRef.current = null;
+      });
+
+      return serverRefreshPromiseRef.current;
+    }
 
     function handleOpen() {
       sseConnectedRef.current = true;
       console.info("[domain-events] 연결됨", { domainId: partner.domainId });
+      void refreshServerState("sse-open");
     }
 
     function handleError() {
@@ -922,17 +956,7 @@ export default function Home() {
       console.warn("[domain-events] 연결 끊김", {
         domainId: partner.domainId
       });
-    }
-
-    function refreshServerState() {
-      const forceRefresh = { force: true };
-
-      return Promise.allSettled([
-        loadChargePage(chargePage, forceRefresh),
-        loadExchangePage(exchangePage, forceRefresh),
-        refreshPendingSummary(forceRefresh),
-        refreshSettlementData(forceRefresh)
-      ]);
+      void refreshServerState("sse-error");
     }
 
     function handleDomainEvent(event) {
@@ -960,10 +984,21 @@ export default function Home() {
           }
         }
 
-        void refreshServerState();
       } catch {
         // Ignore malformed events. The next server-driven refresh will reconcile state.
+      } finally {
+        void refreshServerState(event.type);
       }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void refreshServerState("visibility-visible");
+      }
+    }
+
+    function handleOnline() {
+      void refreshServerState("online");
     }
 
     const eventNames = [
@@ -976,20 +1011,38 @@ export default function Home() {
       "domain-balance-updated"
     ];
 
-    events.onopen = handleOpen;
-    events.onerror = handleError;
-    eventNames.forEach((eventName) => {
-      events.addEventListener(eventName, handleDomainEvent);
-    });
+    if (typeof EventSource !== "undefined") {
+      const eventsUrl = `https://laylow.me/api/integration/domain-events?domainId=${encodeURIComponent(partner.domainId)}`;
+      events = new EventSource(eventsUrl);
+      events.onopen = handleOpen;
+      events.onerror = handleError;
+      eventNames.forEach((eventName) => {
+        events.addEventListener(eventName, handleDomainEvent);
+      });
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    syncTimer = window.setInterval(() => {
+      void refreshServerState("backup-interval");
+    }, SERVER_SYNC_INTERVAL_MS);
 
     return () => {
+      stopped = true;
       sseConnectedRef.current = false;
-      events.onopen = null;
-      events.onerror = null;
-      eventNames.forEach((eventName) => {
-        events.removeEventListener(eventName, handleDomainEvent);
-      });
-      events.close();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+      if (syncTimer) {
+        window.clearInterval(syncTimer);
+      }
+      if (events) {
+        events.onopen = null;
+        events.onerror = null;
+        eventNames.forEach((eventName) => {
+          events.removeEventListener(eventName, handleDomainEvent);
+        });
+        events.close();
+      }
     };
   }, [
     chargePage,
