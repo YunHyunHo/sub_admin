@@ -20,6 +20,9 @@ import {
 } from "lucide-react";
 
 const MIN_CHARGE_AMOUNT = 1000;
+const TABLE_PAGE_SIZE = 10;
+const SEARCH_FETCH_PAGE_SIZE = 100;
+const MAX_SEARCH_FETCH_PAGES = 50;
 const moneyButtons = [10000, 50000, 100000, 500000, 1000000, 5000000];
 const chargeMoneyButtons = [1000, ...moneyButtons];
 
@@ -92,8 +95,52 @@ function formatWonText(value) {
 function normalizePagination(pagination, fallbackPage) {
   return {
     page: Math.max(1, Number(pagination?.page) || fallbackPage),
-    pageSize: Math.max(1, Number(pagination?.pageSize) || 10),
+    pageSize: Math.max(1, Number(pagination?.pageSize) || TABLE_PAGE_SIZE),
     total: Math.max(0, Number(pagination?.total) || 0)
+  };
+}
+
+function normalizeSearchValue(value) {
+  return String(value ?? "").toLowerCase().replace(/\s+/g, "");
+}
+
+function chargeRowMatchesKeyword(row, keyword) {
+  const normalizedKeyword = normalizeSearchValue(keyword);
+
+  if (!normalizedKeyword) {
+    return true;
+  }
+
+  return [
+    row?.id,
+    row?.bankName,
+    row?.depositorName,
+    row?.accountHolder,
+    row?.bankHolderName,
+    row?.accountNumber,
+    row?.amount,
+    row?.buyer,
+    row?.userName,
+    row?.userId,
+    row?.requestedAt,
+    row?.changedAt,
+    formatStatus(row?.status)
+  ].some((value) => normalizeSearchValue(value).includes(normalizedKeyword));
+}
+
+function paginateRows(rows, page, pageSize = TABLE_PAGE_SIZE) {
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+
+  return {
+    rows: rows.slice(start, start + pageSize),
+    pagination: {
+      page: safePage,
+      pageSize,
+      total
+    }
   };
 }
 
@@ -493,14 +540,18 @@ export default function Home() {
     };
   }, [loggedIn, partner, refreshSettlementData]);
 
-  const loadChargePage = useCallback(async (page, options = {}) => {
+  const fetchChargePageData = useCallback(async (page, options = {}) => {
     if (!loggedIn || !partner) {
-      return;
+      return {
+        rows: [],
+        pagination: { page: 1, pageSize: TABLE_PAGE_SIZE, total: 0 }
+      };
     }
 
+    const keyword = orderFilters.keyword.trim();
     const params = new URLSearchParams({
-      page: String(page),
-      pageSize: "10",
+      page: keyword ? "1" : String(page),
+      pageSize: keyword ? String(SEARCH_FETCH_PAGE_SIZE) : String(TABLE_PAGE_SIZE),
       from: orderFilters.from,
       to: orderFilters.to
     });
@@ -509,24 +560,40 @@ export default function Home() {
       params.set("status", orderFilters.status);
     }
 
-    if (orderFilters.keyword.trim()) {
-      params.set("keyword", orderFilters.keyword.trim());
-    }
-
     appendDomainParams(params, partner);
 
-    const charges = await authGetJson(
+    const firstCharges = await authGetJson(
       `/api/integration/charge-requests?${params.toString()}`,
       options
     );
-    const pagination = normalizePagination(charges.pagination, page);
-    const rows = charges.items ?? [];
+    const firstPagination = normalizePagination(firstCharges.pagination, keyword ? 1 : page);
 
-    chargeSignatureRef.current = getRowsSignature(rows, pagination);
-    setChargeRequests(rows);
-    setChargePagination(pagination);
-    notifyChargeStatusChanges(rows);
-    setHistoryError("");
+    if (!keyword) {
+      return {
+        rows: firstCharges.items ?? [],
+        pagination: firstPagination
+      };
+    }
+
+    let allRows = firstCharges.items ?? [];
+    const totalPages = Math.min(
+      MAX_SEARCH_FETCH_PAGES,
+      Math.max(1, Math.ceil(firstPagination.total / firstPagination.pageSize))
+    );
+
+    for (let nextPage = 2; nextPage <= totalPages; nextPage += 1) {
+      const nextParams = new URLSearchParams(params);
+      nextParams.set("page", String(nextPage));
+      const nextCharges = await authGetJson(
+        `/api/integration/charge-requests?${nextParams.toString()}`,
+        options
+      );
+      allRows = allRows.concat(nextCharges.items ?? []);
+    }
+
+    const filteredRows = allRows.filter((row) => chargeRowMatchesKeyword(row, keyword));
+
+    return paginateRows(filteredRows, page);
   }, [
     loggedIn,
     orderFilters.from,
@@ -538,6 +605,16 @@ export default function Home() {
     partner?.name,
     session?.token
   ]);
+
+  const loadChargePage = useCallback(async (page, options = {}) => {
+    const { rows, pagination } = await fetchChargePageData(page, options);
+
+    chargeSignatureRef.current = getRowsSignature(rows, pagination);
+    setChargeRequests(rows);
+    setChargePagination(pagination);
+    notifyChargeStatusChanges(rows);
+    setHistoryError("");
+  }, [fetchChargePageData]);
 
   const loadExchangePage = useCallback(async (page, options = {}) => {
     if (!loggedIn || !partner) {
@@ -1194,16 +1271,6 @@ export default function Home() {
 
       try {
         setHistoryError("");
-        const chargeParams = new URLSearchParams(baseParams);
-        chargeParams.set("page", String(chargePage));
-        chargeParams.set("from", orderFilters.from);
-        chargeParams.set("to", orderFilters.to);
-        if (orderFilters.status) {
-          chargeParams.set("status", orderFilters.status);
-        }
-        if (orderFilters.keyword.trim()) {
-          chargeParams.set("keyword", orderFilters.keyword.trim());
-        }
         const exchangeParams = new URLSearchParams(baseParams);
         exchangeParams.set("page", String(exchangePage));
         const settlementParams = new URLSearchParams(baseParams);
@@ -1212,7 +1279,7 @@ export default function Home() {
         dailySettlementParams.set("from", todayRange.from);
         dailySettlementParams.set("to", todayRange.to);
         const [charges, exchanges, settlements, dailySettlements] = await Promise.all([
-          authGetJson(`/api/integration/charge-requests?${chargeParams.toString()}`),
+          fetchChargePageData(chargePage),
           authGetJson(`/api/integration/domain-exchanges?${exchangeParams.toString()}`),
           authGetJson(`/api/integration/domain-settlements?${settlementParams.toString()}`),
           authGetJson(`/api/integration/domain-settlements?${dailySettlementParams.toString()}`)
@@ -1220,7 +1287,7 @@ export default function Home() {
 
         const exchangeItems = exchanges.items ?? [];
 
-        const nextChargePagination = normalizePagination(charges.pagination, chargePage);
+        const nextChargePagination = charges.pagination;
         const nextExchangePagination = normalizePagination(exchanges.pagination, exchangePage);
         const chargeTotalPages = Math.max(
           1,
@@ -1235,7 +1302,7 @@ export default function Home() {
           return;
         }
 
-        const chargeItems = charges.items ?? [];
+        const chargeItems = charges.rows ?? [];
         setChargeRequests(chargeItems);
         setChargePagination(nextChargePagination);
         setDomainExchangeRequests(exchangeItems);
@@ -1277,6 +1344,7 @@ export default function Home() {
     orderFilters.keyword,
     orderFilters.status,
     orderFilters.to,
+    fetchChargePageData,
     partner?.domainId,
     partner?.domain,
     partner?.name,
