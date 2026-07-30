@@ -1800,21 +1800,6 @@ function FormNotice({ status }) {
 }
 
 function OrdersPage({ error, filters, onFilterChange, onReset, onSearch, page, pagination, rows, setPage }) {
-  const keyword = filters.keyword.trim().toLowerCase();
-  const filteredRows = keyword
-    ? rows.filter((row) => [
-      row.id,
-      row.bankName,
-      row.depositorName,
-      row.accountNumber,
-      row.amount,
-      row.buyer,
-      row.requestedAt,
-      row.changedAt,
-      formatStatus(row.status)
-    ].some((value) => String(value ?? "").toLowerCase().includes(keyword)))
-    : rows;
-
   return (
     <PageFrame title="구매내역">
       <div className="toolbar">
@@ -1858,17 +1843,33 @@ function OrdersPage({ error, filters, onFilterChange, onReset, onSearch, page, p
       <DataTable
         columns={["ID", "은행", "예금주", "계좌번호", "요청금액", "구매자", "요청일", "상태변경일", "상태"]}
         highlightColumns={[2, 3, 4]}
-        rows={filteredRows.map((row) => [
-          row.id ? String(row.id).slice(0, 5) : "-",
-          row.bankName ?? "-",
-          row.depositorName ?? "-",
-          row.accountNumber ?? "-",
-          formatWonText(row.amount),
-          row.buyer ?? "-",
-          formatMonthDayTime(row.requestedAt),
-          formatMonthDayTime(row.changedAt),
-          formatStatus(row.status)
-        ])}
+        rows={rows.map((row) => {
+          const depositorName =
+            row.depositorName ??
+            row.accountHolder ??
+            row.bankHolderName ??
+            "-";
+          const buyerName =
+            row.buyer ??
+            row.depositorName ??
+            row.accountHolder ??
+            row.bankHolderName ??
+            row.userName ??
+            row.userId ??
+            "-";
+
+          return [
+            row.id ? String(row.id).slice(0, 5) : "-",
+            row.bankName ?? "-",
+            depositorName,
+            row.accountNumber ?? "-",
+            formatWonText(row.amount),
+            buyerName,
+            formatMonthDayTime(row.requestedAt),
+            formatMonthDayTime(row.changedAt),
+            formatStatus(row.status)
+          ];
+        })}
         variant="orders"
       />
       <Pagination onPageChange={setPage} page={page} pagination={pagination} />
