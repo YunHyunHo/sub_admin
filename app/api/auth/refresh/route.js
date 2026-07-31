@@ -2,6 +2,31 @@ import { buildAuthEndpoint, getAuthHeaders } from "../_utils";
 
 const REFRESH_API_URL = buildAuthEndpoint("/partner/auth/refresh");
 
+function normalizeWithdrawAccount(source) {
+  const account =
+    source?.withdrawAccount ??
+    source?.exchangeAccount ??
+    source?.settlementAccount ??
+    source?.account ??
+    {};
+
+  return {
+    bankName: account.bankName ?? source?.bankName ?? source?.withdrawBankName ?? "",
+    accountHolder:
+      account.accountHolder ??
+      account.holderName ??
+      source?.accountHolder ??
+      source?.withdrawAccountHolder ??
+      "",
+    accountNumber:
+      account.accountNumber ??
+      account.number ??
+      source?.accountNumber ??
+      source?.withdrawAccountNumber ??
+      ""
+  };
+}
+
 export async function POST(request) {
   const { refreshToken } = await request.json();
 
@@ -32,11 +57,25 @@ export async function POST(request) {
     );
   }
 
+  const withdrawAccount = result.partner
+    ? normalizeWithdrawAccount({
+        ...result,
+        ...result.user,
+        ...result.domain,
+        ...result.partner
+      })
+    : undefined;
+
   return Response.json({
     ok: true,
     token: result.token,
     refreshToken: result.refreshToken ?? refreshToken,
     user: result.user,
     partner: result.partner
+      ? {
+          ...result.partner,
+          withdrawAccount
+        }
+      : undefined
   });
 }

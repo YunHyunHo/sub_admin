@@ -716,7 +716,15 @@ export default function Home() {
             ...currentSession,
             ...result,
             user: result.user ?? currentSession.user,
-            partner: result.partner ?? currentSession.partner,
+            partner: result.partner
+              ? {
+                  ...currentSession.partner,
+                  ...result.partner,
+                  withdrawAccount:
+                    result.partner.withdrawAccount ??
+                    currentSession.partner?.withdrawAccount
+                }
+              : currentSession.partner,
             refreshToken: result.refreshToken ?? currentSession.refreshToken
           };
 
@@ -1022,9 +1030,29 @@ export default function Home() {
       return serverRefreshPromiseRef.current;
     }
 
+    function refreshPartnerSession(reason) {
+      if (!sessionRef.current?.refreshToken) {
+        return;
+      }
+
+      void refreshSessionToken().catch((error) => {
+        if (error.status === 401) {
+          clearSession();
+          return;
+        }
+
+        console.warn("[partner-auth] 업체 정보 갱신 실패", {
+          reason,
+          status: error.status ?? "unknown",
+          message: error.message
+        });
+      });
+    }
+
     function handleOpen() {
       sseConnectedRef.current = true;
       console.info("[domain-events] 연결됨", { domainId: partner.domainId });
+      refreshPartnerSession("sse-open");
       void refreshServerState("sse-open");
     }
 
@@ -1039,6 +1067,14 @@ export default function Home() {
     function handleDomainEvent(event) {
       try {
         const data = JSON.parse(event.data);
+
+        if (event.type === "partner-withdraw-account-updated") {
+          if (!data?.domainId || data.domainId === partner.domainId) {
+            refreshPartnerSession(event.type);
+          }
+
+          return;
+        }
 
         if (data?.id) {
           if (event.type === "charge-request-approved") {
@@ -1085,7 +1121,8 @@ export default function Home() {
       "domain-exchange-created",
       "domain-exchange-approved",
       "domain-exchange-rejected",
-      "domain-balance-updated"
+      "domain-balance-updated",
+      "partner-withdraw-account-updated"
     ];
 
     if (typeof EventSource !== "undefined") {
