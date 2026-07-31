@@ -358,6 +358,7 @@ export default function Home() {
   const historyReadyRef = useRef(false);
   const sessionRef = useRef(null);
   const refreshPromiseRef = useRef(null);
+  const partnerRefreshQueuedRef = useRef(false);
   const serverRefreshPromiseRef = useRef(null);
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
@@ -1030,23 +1031,50 @@ export default function Home() {
       return serverRefreshPromiseRef.current;
     }
 
-    function refreshPartnerSession(reason) {
+    function refreshPartnerSession(reason, options = {}) {
       if (!sessionRef.current?.refreshToken) {
         return;
       }
 
-      void refreshSessionToken().catch((error) => {
-        if (error.status === 401) {
-          clearSession();
+      const runRefresh = () => refreshSessionToken()
+        .then((nextSession) => {
+          console.info("[partner-auth] 업체 정보 갱신 완료", {
+            reason,
+            domainId: nextSession.partner?.domainId,
+            hasWithdrawAccount: Boolean(
+              nextSession.partner?.withdrawAccount?.bankName ||
+              nextSession.partner?.withdrawAccount?.accountHolder ||
+              nextSession.partner?.withdrawAccount?.accountNumber
+            )
+          });
+        })
+        .catch((error) => {
+          if (error.status === 401) {
+            clearSession();
+            return;
+          }
+
+          console.warn("[partner-auth] 업체 정보 갱신 실패", {
+            reason,
+            status: error.status ?? "unknown",
+            message: error.message
+          });
+        });
+
+      if (options.afterCurrent && refreshPromiseRef.current) {
+        if (partnerRefreshQueuedRef.current) {
           return;
         }
 
-        console.warn("[partner-auth] 업체 정보 갱신 실패", {
-          reason,
-          status: error.status ?? "unknown",
-          message: error.message
+        partnerRefreshQueuedRef.current = true;
+        void refreshPromiseRef.current.finally(() => {
+          partnerRefreshQueuedRef.current = false;
+          void runRefresh();
         });
-      });
+        return;
+      }
+
+      void runRefresh();
     }
 
     function handleOpen() {
@@ -1069,10 +1097,7 @@ export default function Home() {
         const data = JSON.parse(event.data);
 
         if (event.type === "partner-withdraw-account-updated") {
-          if (!data?.domainId || data.domainId === partner.domainId) {
-            refreshPartnerSession(event.type);
-          }
-
+          refreshPartnerSession(event.type, { afterCurrent: true });
           return;
         }
 
