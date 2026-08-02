@@ -378,6 +378,8 @@ export default function Home() {
   const noticeAudioRef = useRef(null);
   const noticeSoundUnlockedRef = useRef(false);
   const noticeRetryTimerRef = useRef(null);
+  const chargePageRef = useRef(1);
+  const exchangePageRef = useRef(1);
   const partner = session?.partner ?? dashboard?.partner;
   const withdrawAccount = partner?.withdrawAccount ?? {};
   const sessionUserId = session?.user?.loginId ?? "";
@@ -385,6 +387,14 @@ export default function Home() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    chargePageRef.current = chargePage;
+  }, [chargePage]);
+
+  useEffect(() => {
+    exchangePageRef.current = exchangePage;
+  }, [exchangePage]);
 
   const withdrawBalanceAmount = useMemo(
     () => {
@@ -460,8 +470,7 @@ export default function Home() {
     loggedIn,
     partner?.domainId,
     partner?.domain,
-    partner?.name,
-    session?.token
+    partner?.name
   ]);
 
   const refreshSettlementData = useCallback(async (options = {}) => {
@@ -505,8 +514,7 @@ export default function Home() {
     loggedIn,
     partner?.domainId,
     partner?.domain,
-    partner?.name,
-    session?.token
+    partner?.name
   ]);
 
   useEffect(() => {
@@ -608,8 +616,7 @@ export default function Home() {
     orderFilters.to,
     partner?.domainId,
     partner?.domain,
-    partner?.name,
-    session?.token
+    partner?.name
   ]);
 
   const loadChargePage = useCallback(async (page, options = {}) => {
@@ -652,8 +659,7 @@ export default function Home() {
     loggedIn,
     partner?.domainId,
     partner?.domain,
-    partner?.name,
-    session?.token
+    partner?.name
   ]);
 
   const logout = useCallback(() => {
@@ -1022,8 +1028,8 @@ export default function Home() {
       }
 
       serverRefreshPromiseRef.current = Promise.allSettled([
-        loadChargePage(chargePage, forceRefresh),
-        loadExchangePage(exchangePage, forceRefresh),
+        loadChargePage(chargePageRef.current, forceRefresh),
+        loadExchangePage(exchangePageRef.current, forceRefresh),
         refreshPendingSummary(forceRefresh),
         refreshSettlementData(forceRefresh)
       ]).then((results) => {
@@ -1093,7 +1099,6 @@ export default function Home() {
     function handleOpen() {
       sseConnectedRef.current = true;
       console.info("[domain-events] 연결됨", { domainId: partner.domainId });
-      refreshPartnerSession("sse-open");
       void refreshServerState("sse-open");
     }
 
@@ -1250,9 +1255,7 @@ export default function Home() {
       }
     };
   }, [
-    chargePage,
     loadChargePage,
-    exchangePage,
     loadExchangePage,
     loggedIn,
     partner?.domainId,
@@ -1476,8 +1479,7 @@ export default function Home() {
     partner?.domainId,
     partner?.domain,
     partner?.name,
-    refreshPendingSummary,
-    session?.token
+    refreshPendingSummary
   ]);
 
   useEffect(() => {
