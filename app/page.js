@@ -104,6 +104,10 @@ function normalizeSearchValue(value) {
   return String(value ?? "").toLowerCase().replace(/\s+/g, "");
 }
 
+function isSameId(left, right) {
+  return String(left ?? "").trim() === String(right ?? "").trim();
+}
+
 function chargeRowMatchesKeyword(row, keyword) {
   const normalizedKeyword = normalizeSearchValue(keyword);
 
@@ -1112,15 +1116,30 @@ export default function Home() {
 
         if (data?.id) {
           if (event.type === "charge-request-approved") {
-            setChargeRequests((currentRows) => currentRows.map((row) => (
-              row.id === data.id
-                ? {
-                    ...row,
-                    status: data.status ?? "APPROVED",
-                    changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
-                  }
-                : row
-            )));
+            setChargeRequests((currentRows) => {
+              let matched = false;
+              const nextRows = currentRows.map((row) => {
+                if (!isSameId(row.id, data.id)) {
+                  return row;
+                }
+
+                matched = true;
+                return {
+                  ...row,
+                  status: data.status ?? "APPROVED",
+                  changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
+                };
+              });
+
+              console.info("[domain-events] 충전 승인 이벤트 수신", {
+                id: data.id,
+                matched,
+                receivedAt: new Date().toISOString(),
+                updatedAt: data.updatedAt ?? data.changedAt ?? null
+              });
+
+              return nextRows;
+            });
             chargeStatusRef.current.set(data.id, data.status ?? "APPROVED");
             notifyApprovedCharge({
               id: data.id,
@@ -1131,15 +1150,30 @@ export default function Home() {
           }
 
           if (event.type === "charge-request-rejected") {
-            setChargeRequests((currentRows) => currentRows.map((row) => (
-              row.id === data.id
-                ? {
-                    ...row,
-                    status: data.status ?? "REJECTED",
-                    changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
-                  }
-                : row
-            )));
+            setChargeRequests((currentRows) => {
+              let matched = false;
+              const nextRows = currentRows.map((row) => {
+                if (!isSameId(row.id, data.id)) {
+                  return row;
+                }
+
+                matched = true;
+                return {
+                  ...row,
+                  status: data.status ?? "REJECTED",
+                  changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
+                };
+              });
+
+              console.info("[domain-events] 충전 거절 이벤트 수신", {
+                id: data.id,
+                matched,
+                receivedAt: new Date().toISOString(),
+                updatedAt: data.updatedAt ?? data.changedAt ?? null
+              });
+
+              return nextRows;
+            });
             chargeStatusRef.current.set(data.id, data.status ?? "REJECTED");
           }
 
