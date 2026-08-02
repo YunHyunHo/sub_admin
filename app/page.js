@@ -360,6 +360,7 @@ export default function Home() {
   const refreshPromiseRef = useRef(null);
   const partnerRefreshQueuedRef = useRef(false);
   const serverRefreshPromiseRef = useRef(null);
+  const serverRefreshQueuedRef = useRef(false);
   const chargeSignatureRef = useRef("");
   const exchangeSignatureRef = useRef("");
   const sseConnectedRef = useRef(false);
@@ -1001,10 +1002,18 @@ export default function Home() {
     let syncTimer = null;
     let events = null;
 
-    function refreshServerState(reason) {
+    function refreshServerState(reason, options = {}) {
       const forceRefresh = { force: true };
 
       if (serverRefreshPromiseRef.current) {
+        if (options.afterCurrent && !serverRefreshQueuedRef.current) {
+          serverRefreshQueuedRef.current = true;
+          void serverRefreshPromiseRef.current.finally(() => {
+            serverRefreshQueuedRef.current = false;
+            void refreshServerState(`${reason}:queued`);
+          });
+        }
+
         return serverRefreshPromiseRef.current;
       }
 
@@ -1103,12 +1112,35 @@ export default function Home() {
 
         if (data?.id) {
           if (event.type === "charge-request-approved") {
+            setChargeRequests((currentRows) => currentRows.map((row) => (
+              row.id === data.id
+                ? {
+                    ...row,
+                    status: data.status ?? "APPROVED",
+                    changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
+                  }
+                : row
+            )));
+            chargeStatusRef.current.set(data.id, data.status ?? "APPROVED");
             notifyApprovedCharge({
               id: data.id,
               amount: data.amount,
               status: data.status ?? "APPROVED",
               changedAt: data.updatedAt ?? data.changedAt
             });
+          }
+
+          if (event.type === "charge-request-rejected") {
+            setChargeRequests((currentRows) => currentRows.map((row) => (
+              row.id === data.id
+                ? {
+                    ...row,
+                    status: data.status ?? "REJECTED",
+                    changedAt: data.updatedAt ?? data.changedAt ?? row.changedAt
+                  }
+                : row
+            )));
+            chargeStatusRef.current.set(data.id, data.status ?? "REJECTED");
           }
 
           if (event.type === "domain-exchange-approved") {
@@ -1125,7 +1157,7 @@ export default function Home() {
       } catch {
         // Ignore malformed events. The next server-driven refresh will reconcile state.
       } finally {
-        void refreshServerState(event.type);
+        void refreshServerState(event.type, { afterCurrent: true });
       }
     }
 
