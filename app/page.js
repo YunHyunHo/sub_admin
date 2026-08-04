@@ -19,12 +19,12 @@ import {
   WalletCards
 } from "lucide-react";
 
-const MIN_CHARGE_AMOUNT = 1000;
+const MIN_CHARGE_AMOUNT = 100;
 const TABLE_PAGE_SIZE = 10;
 const SEARCH_FETCH_PAGE_SIZE = 100;
 const MAX_SEARCH_FETCH_PAGES = 50;
 const moneyButtons = [10000, 50000, 100000, 500000, 1000000, 5000000];
-const chargeMoneyButtons = [1000, ...moneyButtons];
+const chargeMoneyButtons = [100, 1000, ...moneyButtons];
 
 const navItems = [
   { key: "charge", label: "충전", icon: ArrowDownToLine },
@@ -90,6 +90,14 @@ function isValidChargeAmount(value) {
 
 function formatWonText(value) {
   return `${formatWon(parseWon(value))} 원`;
+}
+
+function formatAmountButtonLabel(value) {
+  if (value < 10000) {
+    return `${formatWon(value)}원`;
+  }
+
+  return `${value / 10000}만원`;
 }
 
 function normalizePagination(pagination, fallbackPage) {
@@ -1517,7 +1525,7 @@ export default function Home() {
     if (!isValidChargeAmount(amount)) {
       setChargeStatus({
         type: "error",
-        message: "충전 금액은 1천원 이상, 1천원 단위로 입력해주세요."
+        message: "충전 금액은 100원 이상, 100원 단위로 입력해주세요."
       });
       setChargeSubmitting(false);
       return;
@@ -1828,7 +1836,7 @@ function AmountButtons({ allAmount = 0, onPick, includeAll, values = moneyButton
     <div className="amountButtons">
       {values.map((value) => (
         <button key={value} onClick={() => onPick(value, "add")} type="button">
-          {value < 10000 ? `${value / 1000}천원` : `${value / 10000}만원`}
+          {formatAmountButtonLabel(value)}
         </button>
       ))}
       {includeAll && (
