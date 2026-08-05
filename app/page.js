@@ -19,7 +19,7 @@ import {
   WalletCards
 } from "lucide-react";
 
-const MIN_CHARGE_AMOUNT = 100;
+const MIN_CHARGE_AMOUNT = 1;
 const TABLE_PAGE_SIZE = 10;
 const SEARCH_FETCH_PAGE_SIZE = 100;
 const MAX_SEARCH_FETCH_PAGES = 50;
@@ -1525,7 +1525,7 @@ export default function Home() {
     if (!isValidChargeAmount(amount)) {
       setChargeStatus({
         type: "error",
-        message: "충전 금액은 100원 이상, 100원 단위로 입력해주세요."
+        message: "충전 금액은 1원 이상으로 입력해주세요."
       });
       setChargeSubmitting(false);
       return;
@@ -1568,17 +1568,17 @@ export default function Home() {
     setWithdrawStatus(null);
 
     const requestedAmount = parseWon(withdrawAmount);
-    const maxWithdrawAmount = parseWon(availableWithdrawAmount);
+    const maxWithdrawAmount = floorToTransactionUnit(availableWithdrawAmount);
     const amount = Math.min(requestedAmount, maxWithdrawAmount);
 
     if (requestedAmount !== amount) {
       setWithdrawAmount(amount ? String(amount) : "");
     }
 
-    if (amount <= 0) {
+    if (!isValidChargeAmount(amount)) {
       setWithdrawStatus({
         type: "error",
-        message: "환전 금액을 입력해주세요."
+        message: "환전 금액은 1원 이상으로 입력해주세요."
       });
       return;
     }
@@ -1939,11 +1939,19 @@ function WithdrawPage({
     }
 
     if (action === "all") {
-      setLimitedAmount(value);
+      const allAmount = floorToTransactionUnit(value);
+
+      setAmount(allAmount ? String(allAmount) : "");
       return;
     }
 
-    setLimitedAmount(parseWon(amount) + value);
+    const maxAmount = floorToTransactionUnit(availableAmount);
+    const nextAmount = Math.min(
+      floorToTransactionUnit(amount) + value,
+      maxAmount
+    );
+
+    setAmount(nextAmount ? String(nextAmount) : "");
   }
 
   const accountSummary = [
@@ -1970,6 +1978,7 @@ function WithdrawPage({
             allAmount={availableAmount}
             includeAll
             onPick={handleAmountPick}
+            values={chargeMoneyButtons}
           />
         </div>
         <div className="labelCell">신청계좌</div>

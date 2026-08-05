@@ -17,7 +17,7 @@ export async function POST(request) {
   }
 
   if (!Number.isInteger(amount) || amount <= 0) {
-    return integrationError("충전 금액을 입력해주세요.");
+    return integrationError("충전 금액은 1원 이상으로 입력해주세요.");
   }
 
   const payload = {
