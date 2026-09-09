@@ -38,6 +38,7 @@ const ACTIVE_MENU_STORAGE_KEY = "winpay_partner_active_menu";
 const THEME_STORAGE_KEY = "winpay_partner_theme";
 const HISTORY_REFRESH_INTERVAL_MS = 5000;
 const SERVER_SYNC_INTERVAL_MS = 30000;
+const REALTIME_FALLBACK_INTERVAL_MS = 10000;
 const NOTICE_SOUND_PATH = "/sounds/notice.mp3";
 
 function getSharedNoticeAudio() {
@@ -1019,6 +1020,16 @@ export default function Home() {
     let stopped = false;
     let syncTimer = null;
     let events = null;
+    let socket = null;
+    let reconnectTimer = null;
+    let fallbackTimer = null;
+    let heartbeatTimer = null;
+    let lastPongAt = 0;
+    let reconnectDelay = 500;
+    let messageQueue = Promise.resolve();
+    const clientInstanceId = crypto.randomUUID();
+    const cursorKey = `winpay_partner_realtime_cursor:${partner.domainId}`;
+    let lastProcessedEventId = window.sessionStorage.getItem(cursorKey);
 
     function refreshServerState(reason, options = {}) {
       const forceRefresh = { force: true };
@@ -1208,14 +1219,174 @@ export default function Home() {
       }
     }
 
+    function stopLegacyTransport() {
+      if (syncTimer) window.clearInterval(syncTimer);
+      syncTimer = null;
+      if (events) events.close();
+      events = null;
+    }
+
+    function startLegacyTransport() {
+      if (stopped || events || syncTimer) return;
+      if (typeof EventSource !== "undefined") {
+        const eventsUrl = `https://laylow.me/api/integration/domain-events?domainId=${encodeURIComponent(partner.domainId)}`;
+        events = new EventSource(eventsUrl);
+        events.onopen = handleOpen;
+        events.onerror = handleError;
+        eventNames.forEach((eventName) => events.addEventListener(eventName, handleDomainEvent));
+      }
+      syncTimer = window.setInterval(() => {
+        void refreshServerState("legacy-backup-interval");
+      }, SERVER_SYNC_INTERVAL_MS);
+    }
+
+    function stopFallback() {
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+
+    function scheduleFallback() {
+      if (stopped || fallbackTimer || socket?.readyState === WebSocket.OPEN) return;
+      fallbackTimer = window.setTimeout(async () => {
+        fallbackTimer = null;
+        await refreshServerState("websocket-fallback");
+        scheduleFallback();
+      }, REALTIME_FALLBACK_INTERVAL_MS);
+    }
+
+    function persistCursor(eventId) {
+      if (!eventId) return;
+      lastProcessedEventId = String(eventId);
+      window.sessionStorage.setItem(cursorKey, lastProcessedEventId);
+    }
+
+    async function connectRealtime() {
+      if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+      try {
+        const config = await authGetJson(`/api/realtime/token?clientInstanceId=${encodeURIComponent(clientInstanceId)}`, { force: true });
+        if (config?.mode !== "websocket" || !config?.token || !config?.webSocketUrl) {
+          startLegacyTransport();
+          return;
+        }
+
+        stopLegacyTransport();
+        const nextSocket = new WebSocket(config.webSocketUrl);
+        socket = nextSocket;
+        nextSocket.onopen = () => {
+          reconnectDelay = 500;
+          nextSocket.send(JSON.stringify({
+            type: "auth",
+            token: config.token,
+            clientInstanceId,
+            lastProcessedEventId
+          }));
+        };
+        nextSocket.onmessage = (message) => {
+          const clientReceivedAt = new Date().toISOString();
+          messageQueue = messageQueue.then(async () => {
+            const payload = JSON.parse(String(message.data));
+            if (payload.type === "pong") {
+              lastPongAt = Date.now();
+              return;
+            }
+            if (payload.type === "control") {
+              if (payload.mode === "legacy") {
+                nextSocket.close(1000, "group rollback");
+                startLegacyTransport();
+              }
+              return;
+            }
+            if (payload.type === "resync-required") {
+              persistCursor(payload.cursor);
+              await refreshServerState("websocket-resync");
+              return;
+            }
+            if (payload.type === "ready") {
+              persistCursor(payload.cursor);
+              sseConnectedRef.current = true;
+              stopFallback();
+              await refreshServerState("websocket-ready");
+              lastPongAt = Date.now();
+              if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+              heartbeatTimer = window.setInterval(() => {
+                if (Date.now() - lastPongAt > 15000) {
+                  nextSocket.close(1013, "heartbeat timeout");
+                } else if (nextSocket.readyState === WebSocket.OPEN) {
+                  nextSocket.send(JSON.stringify({ type: "ping" }));
+                }
+              }, 5000);
+              return;
+            }
+            if (payload.type !== "request-event" || !payload.event) return;
+            const eventId = String(payload.event.eventId || "");
+            const duplicate = Boolean(
+              eventId && lastProcessedEventId && BigInt(eventId) <= BigInt(lastProcessedEventId)
+            );
+            let soundRequested = false;
+            if (!duplicate) {
+              const noticeSet = payload.event.kind === "charge"
+                ? approvedChargeNotificationRef.current
+                : payload.event.kind === "domain_exchange"
+                  ? approvedExchangeNotificationRef.current
+                  : null;
+              const wasNotified = noticeSet?.has(payload.event.requestId) === true;
+              if (payload.event.kind === "domain_update") {
+                refreshPartnerSession("partner-withdraw-account-updated", { afterCurrent: true });
+              }
+              await refreshServerState(`websocket:${payload.event.kind}:${payload.event.status}`, { afterCurrent: true });
+              soundRequested = Boolean(noticeSet && !wasNotified && noticeSet.has(payload.event.requestId));
+              persistCursor(eventId);
+            }
+            if (eventId && nextSocket.readyState === WebSocket.OPEN) {
+              nextSocket.send(JSON.stringify({
+                type: "ack",
+                eventId,
+                kind: payload.event.kind,
+                requestId: payload.event.requestId,
+                outboxCreatedAt: payload.event.outboxCreatedAt,
+                clientReceivedAt,
+                uiUpdatedAt: new Date().toISOString(),
+                duplicate,
+                soundRequested
+              }));
+            }
+          }).catch(() => nextSocket.close(1013, "event processing failed"));
+        };
+        nextSocket.onerror = () => scheduleFallback();
+        nextSocket.onclose = () => {
+          if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+          if (socket === nextSocket) socket = null;
+          sseConnectedRef.current = false;
+          if (stopped || events) return;
+          void refreshServerState("websocket-disconnected");
+          scheduleFallback();
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
+            void connectRealtime();
+          }, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+        };
+      } catch {
+        scheduleFallback();
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          void connectRealtime();
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+      }
+    }
+
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
         void refreshServerState("visibility-visible");
+        void connectRealtime();
       }
     }
 
     function handleOnline() {
       void refreshServerState("online");
+      void connectRealtime();
     }
 
     const eventNames = [
@@ -1229,30 +1400,20 @@ export default function Home() {
       "partner-withdraw-account-updated"
     ];
 
-    if (typeof EventSource !== "undefined") {
-      const eventsUrl = `https://laylow.me/api/integration/domain-events?domainId=${encodeURIComponent(partner.domainId)}`;
-      events = new EventSource(eventsUrl);
-      events.onopen = handleOpen;
-      events.onerror = handleError;
-      eventNames.forEach((eventName) => {
-        events.addEventListener(eventName, handleDomainEvent);
-      });
-    }
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("online", handleOnline);
-    syncTimer = window.setInterval(() => {
-      void refreshServerState("backup-interval");
-    }, SERVER_SYNC_INTERVAL_MS);
+    void connectRealtime();
 
     return () => {
       stopped = true;
       sseConnectedRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
-      if (syncTimer) {
-        window.clearInterval(syncTimer);
-      }
+      stopLegacyTransport();
+      stopFallback();
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      socket?.close(1000, "page closed");
       if (events) {
         events.onopen = null;
         events.onerror = null;
