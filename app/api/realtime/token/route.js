@@ -21,6 +21,13 @@ export async function GET(request) {
     }
   );
   const result = await response.json().catch(() => null);
+  console.info("[partner-realtime] token proxy", {
+    upstreamStatus: response.status,
+    contentType: response.headers.get("content-type"),
+    mode: result?.mode ?? null,
+    hasToken: Boolean(result?.token),
+    hasWebSocketUrl: Boolean(result?.webSocketUrl)
+  });
   return Response.json(result ?? { mode: "legacy" }, {
     status: response.status,
     headers: { "Cache-Control": "no-store, private" }
