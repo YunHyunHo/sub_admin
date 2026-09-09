@@ -1270,9 +1270,13 @@ export default function Home() {
         }
 
         stopLegacyTransport();
+        console.info("[partner-realtime] websocket connecting", {
+          host: new URL(config.webSocketUrl).host
+        });
         const nextSocket = new WebSocket(config.webSocketUrl);
         socket = nextSocket;
         nextSocket.onopen = () => {
+          console.info("[partner-realtime] websocket open");
           reconnectDelay = 500;
           nextSocket.send(JSON.stringify({
             type: "auth",
@@ -1352,8 +1356,15 @@ export default function Home() {
             }
           }).catch(() => nextSocket.close(1013, "event processing failed"));
         };
-        nextSocket.onerror = () => scheduleFallback();
-        nextSocket.onclose = () => {
+        nextSocket.onerror = () => {
+          console.warn("[partner-realtime] websocket error");
+          scheduleFallback();
+        };
+        nextSocket.onclose = (event) => {
+          console.warn("[partner-realtime] websocket closed", {
+            code: event.code,
+            reason: event.reason || ""
+          });
           if (heartbeatTimer) window.clearInterval(heartbeatTimer);
           heartbeatTimer = null;
           if (socket === nextSocket) socket = null;
