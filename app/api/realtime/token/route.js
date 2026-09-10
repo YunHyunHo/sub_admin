@@ -28,8 +28,13 @@ export async function GET(request) {
     hasToken: Boolean(result?.token),
     hasWebSocketUrl: Boolean(result?.webSocketUrl)
   });
-  return Response.json(result ?? { mode: "legacy" }, {
-    status: response.status,
-    headers: { "Cache-Control": "no-store, private" }
-  });
+  return Response.json(
+    response.ok
+      ? { ok: true, ...(result ?? { mode: "legacy" }) }
+      : result ?? { ok: false, mode: "legacy" },
+    {
+      status: response.status,
+      headers: { "Cache-Control": "no-store, private" }
+    }
+  );
 }
