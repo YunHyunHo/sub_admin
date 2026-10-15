@@ -2057,12 +2057,12 @@ function ChargePage({
             value={chargeUserId}
           />
         </div>
-        <div className="labelCell">입금자명</div>
+        <div className="labelCell">입금자명 (선택)</div>
         <div className="valueCell">
           <input
             className="valueInput"
             onChange={(event) => setDepositor(event.target.value)}
-            placeholder="입금자명 입력"
+            placeholder="입금자명 (선택)"
             value={depositor}
           />
         </div>

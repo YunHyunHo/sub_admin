@@ -12,10 +12,6 @@ export async function POST(request) {
     return integrationError("도메인 정보가 없습니다.");
   }
 
-  if (!body.depositorName?.trim()) {
-    return integrationError("입금자명을 입력해주세요.");
-  }
-
   if (!Number.isInteger(amount) || amount <= 0) {
     return integrationError("충전 금액은 1원 이상으로 입력해주세요.");
   }
@@ -23,7 +19,7 @@ export async function POST(request) {
   const payload = {
     externalId: body.externalId,
     ...domainPayload,
-    depositorName: body.depositorName.trim(),
+    depositorName: body.depositorName?.trim() ?? "",
     amount
   };
 
